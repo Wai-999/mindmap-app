@@ -30,14 +30,14 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Scripts
 
-| Script | Purpose |
-|---|---|
-| `npm run dev` | Start the dev server (Turbopack) |
-| `npm run build` | Production build |
-| `npm run start` | Run the production build |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | TypeScript, no emit |
-| `npm run format` / `format:check` | Prettier |
+| Script                            | Purpose                          |
+| --------------------------------- | -------------------------------- |
+| `npm run dev`                     | Start the dev server (Turbopack) |
+| `npm run build`                   | Production build                 |
+| `npm run start`                   | Run the production build         |
+| `npm run lint`                    | ESLint                           |
+| `npm run typecheck`               | TypeScript, no emit              |
+| `npm run format` / `format:check` | Prettier                         |
 
 (Database and test scripts are documented here once those phases land.)
 

@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-geist-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -123,11 +123,14 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Direct reference (not the --font-sans theme token): that token is declared at
+       :root by @theme inline, one scope above where the next/font variable class
+       (on <body>) is actually defined, so var(--font-geist-sans) would fail to
+       resolve there. */
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   }
-  button:not(:disabled), [role="button"]:not(:disabled) {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
     cursor: pointer;
-  }
-  html {
-    @apply font-sans;
   }
 }

@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // PRODUCTION SWAP: change to "postgresql" and point DATABASE_URL at a Postgres
+  // instance (Neon/Supabase/Railway/etc). See README for the full swap steps.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth (NextAuth / Auth.js v5 Prisma adapter contract) ----------
+
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String   @unique
+  password  String? // bcrypt hash; null if the user only ever signs in via a future OAuth provider
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+  mindmaps Mindmap[]
+
+  @@map("users")
+}
+
+// Required by @auth/prisma-adapter's contract. Unused while there is only a
+// Credentials provider, but keeping it means adding Google/GitHub OAuth later
+// needs zero schema migration.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// Not used while session strategy = "jwt", kept for adapter compatibility.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ---------- Core domain ----------
+
+model Mindmap {
+  id    String @id @default(cuid())
+  title String @default("Untitled Mindmap")
+
+  // JSON-encoded MindmapContent ({ nodes, edges, viewport }) — see src/types/mindmap.ts.
+  // Stored as a plain string (not the Prisma `Json` type) so this schema behaves
+  // identically on SQLite and PostgreSQL; encode/decode via src/lib/mindmap/content-codec.ts.
+  content        String   @default("{\"nodes\":[],\"edges\":[]}")
+  contentVersion Int      @default(1)
+  thumbnail      String? // small size-capped base64 PNG data URL for dashboard cards
+
+  ownerId   String
+  createdAt DateTime @default(now())
+  // Set explicitly by application code on every write (not @updatedAt) — this is the
+  // value autosave's optimistic-concurrency check compares against, so it must only
+  // change on real content/title writes, never as a side effect of an unrelated update.
+  updatedAt DateTime @default(now())
+
+  owner      User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  shareLinks ShareLink[]
+
+  @@index([ownerId])
+  @@map("mindmaps")
+}
+
+// Not a Prisma `enum` — SQLite has no native enum type support, so this is a
+// plain string constrained at the application layer (src/types/share.ts).
+// "VIEW" | "EDIT"
+model ShareLink {
+  id         String    @id @default(cuid())
+  token      String    @unique
+  permission String    @default("VIEW")
+  mindmapId  String
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  mindmap Mindmap @relation(fields: [mindmapId], references: [id], onDelete: Cascade)
+
+  @@index([mindmapId])
+  @@map("share_links")
+}

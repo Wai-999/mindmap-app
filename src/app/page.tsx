@@ -1,103 +1,95 @@
-import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { ArrowRight, Brain, Keyboard, Share2, Zap } from "lucide-react";
 
-export default function Home() {
+import { auth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+
+export default async function Home() {
+  const session = await auth();
+  if (session?.user) redirect("/dashboard");
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="flex min-h-svh flex-col">
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
+        <div className="flex items-center gap-2 font-semibold">
+          <Brain className="text-primary size-6" />
+          Mindmap
         </div>
+        <nav className="flex items-center gap-2">
+          <Button variant="ghost" asChild>
+            <Link href="/login">Sign in</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/register">Get started</Link>
+          </Button>
+        </nav>
+      </header>
+
+      <main className="flex-1">
+        <section className="mx-auto flex max-w-3xl flex-col items-center gap-6 px-6 pt-16 pb-20 text-center sm:pt-24">
+          <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
+            Think out loud. <span className="text-primary">Map it as you go.</span>
+          </h1>
+          <p className="text-muted-foreground max-w-xl text-lg text-balance">
+            A fast, keyboard-first mindmapping canvas with instant autosave and one-click
+            sharing — no clutter, just your ideas.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button size="lg" asChild>
+              <Link href="/register">
+                Start mapping for free
+                <ArrowRight />
+              </Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild>
+              <Link href="/login">I already have an account</Link>
+            </Button>
+          </div>
+        </section>
+
+        <section className="mx-auto grid max-w-5xl gap-6 px-6 pb-24 sm:grid-cols-3">
+          <FeatureCard
+            icon={<Keyboard className="size-5" />}
+            title="Keyboard-first"
+            description="Tab to branch, Enter for a new idea, Cmd+Z when you change your mind. Never touch the mouse."
+          />
+          <FeatureCard
+            icon={<Zap className="size-5" />}
+            title="Always saved"
+            description="Every change autosaves in the background, so you can close the tab and pick up right where you left off."
+          />
+          <FeatureCard
+            icon={<Share2 className="size-5" />}
+            title="Share in one click"
+            description="Send a link that opens straight into the canvas — view-only or fully editable, no account required."
+          />
+        </section>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+      <footer className="text-muted-foreground mx-auto w-full max-w-6xl px-6 py-8 text-center text-sm">
+        Built with Next.js, React Flow, and Prisma.
       </footer>
+    </div>
+  );
+}
+
+function FeatureCard({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="bg-card text-card-foreground flex flex-col gap-3 rounded-xl border p-6">
+      <div className="bg-primary/10 text-primary flex size-10 items-center justify-center rounded-lg">
+        {icon}
+      </div>
+      <h3 className="font-medium">{title}</h3>
+      <p className="text-muted-foreground text-sm">{description}</p>
     </div>
   );
 }
