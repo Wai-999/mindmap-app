@@ -79,6 +79,8 @@ provider works.
 | `npm run test`        | Vitest unit tests                              |
 | `npm run test:watch`  | Vitest in watch mode                           |
 | `npm run test:e2e`    | Playwright end-to-end tests                    |
+| `npm run electron:dev`   | Launch the desktop shell against an already-running `npm run dev` |
+| `npm run electron:pack`  | Build the installable macOS `.dmg` (see [Desktop app](#option-d--desktop-app-macos)) |
 
 ## Testing
 
@@ -127,6 +129,52 @@ SQLite needs a writable, persistent disk, which platforms like Vercel don't prov
 the Postgres swap below first. Point `DATABASE_URL` at a managed Postgres instance (Neon, Supabase,
 Railway, RDS, etc.) and set `NEXTAUTH_SECRET` / `NEXTAUTH_URL` in the project's environment
 variables.
+
+### Option D — Desktop app (macOS)
+
+The same app also packages into a native Mac app via Electron — a real `.dmg` you install once and
+launch like any other app, no terminal/Docker required to use it day-to-day.
+
+**Building it:**
+
+```bash
+npm run electron:pack
+```
+
+This produces `release/Mindmap-<version>-arm64.dmg`. Open it, drag Mindmap to Applications.
+
+**First launch:** macOS will warn "Apple could not verify this app" — that's expected, since this
+isn't signed with a paid Apple Developer certificate. Right-click the app → **Open** → **Open**
+again in the dialog (only needed once). After that it opens normally.
+
+**Where your data lives:** `~/Library/Application Support/Mindmap/` — `mindmap.db` (your mindmaps),
+`config.json` (a generated session secret), `attachments/` (uploaded files). The app itself never
+touches anything outside this folder plus its own bundle; nothing is exposed to the network (the
+local server only ever binds `127.0.0.1`).
+
+**Enabling collaboration or real password-reset emails:** edit
+`~/Library/Application Support/Mindmap/config.env` (a commented template is created on first
+launch — same optional keys as `.env.example`: `LIVEBLOCKS_SECRET_KEY`, `SMTP_HOST`, etc.), then
+quit and reopen the app.
+
+**Getting updates:** new versions are published as new `.dmg`s on the
+[GitHub Releases page](https://github.com/Wai-999/mindmap-app/releases) — download the latest and
+drag it over the old one in Applications. Your data isn't touched by an update (it lives outside
+the app bundle); only what's actually released is manual, on purpose, so nothing auto-installs
+without you choosing to.
+
+**Cutting a new release** (for maintainers):
+
+```bash
+npm version patch                 # or minor/major — bumps package.json, tags git
+npm run electron:pack             # produces release/Mindmap-x.y.z-arm64.dmg
+git push && git push --tags
+gh release create vX.Y.Z release/Mindmap-*.dmg --title "vX.Y.Z" --notes "..."
+```
+
+Note: `npm run electron:pack` builds for the machine's own architecture (Apple Silicon, if built on
+one). Supporting Intel Macs too would mean adding `"darwin"` to `binaryTargets` in
+`prisma/schema.prisma` and building with `--x64`/`--universal`.
 
 ### SQLite → PostgreSQL swap
 
@@ -179,6 +227,9 @@ change.
   oversight, and would be new layout algorithms alongside `layout-tree.ts`/`layout-radial.ts`.
 - **Google Docs import isn't supported** — it would need Google OAuth + Drive API integration, a
   separate initiative from the JSON/Markdown import already in place.
+- **The desktop `.dmg` is unsigned and Apple-Silicon-only for now** — no Apple Developer account
+  behind it, so Gatekeeper's one-time warning applies (documented above), and updates are a manual
+  re-download rather than an in-app auto-updater (that pairs best with a signed build).
 
 ## Roadmap
 

@@ -12,7 +12,9 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts"],
+    // electron/** is plain CommonJS Node glue code (see its own comment), not part of
+    // the TypeScript/Next.js app the rest of this config targets.
+    ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "electron/**", "release/**"],
   },
 ];
 

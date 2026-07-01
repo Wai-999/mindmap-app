@@ -2,6 +2,7 @@
   "name": "mindmap-app",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
@@ -18,7 +19,11 @@
     "db:reset": "prisma migrate reset",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "electron:dev": "ELECTRON_START_URL=http://localhost:3000 electron .",
+    "electron:build-template-db": "rm -f prisma/template.db && DATABASE_URL=\"file:./template.db\" npx prisma migrate deploy",
+    "electron:prepare": "npm run build && rm -rf .next/standalone/.next/static .next/standalone/public && cp -R .next/static .next/standalone/.next/static && cp -R public .next/standalone/public && rm -f .next/standalone.tar.gz && tar -czf .next/standalone.tar.gz -C .next/standalone .",
+    "electron:pack": "npm run electron:prepare && npm run electron:build-template-db && electron-builder --mac"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -71,6 +76,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "15.5.19",
     "jsdom": "^25.0.1",
