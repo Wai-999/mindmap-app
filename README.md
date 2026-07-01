@@ -6,13 +6,17 @@ links. Built full-stack with Next.js.
 ## Features
 
 - Infinite pan/zoom canvas with inline node editing, per-node color, and collapse/expand
-- Keyboard-first editing: `Tab` add child · `Enter` add sibling · `Delete`/`Backspace` remove
-  subtree · `Cmd/Ctrl+Z` / `Shift+Cmd/Ctrl+Z` undo/redo · `Cmd/Ctrl+D` duplicate subtree ·
-  `Cmd/Ctrl+S` force-save
+- A mindmap can hold several independent primary ideas (a forest of trees), not just one central
+  topic — press `Enter` on a primary idea to add another, or use the toolbar's "Add primary idea"
+- Keyboard-first editing: `Tab` add child · `Enter` add sibling (or a new primary idea, on a root) ·
+  `Delete`/`Backspace` remove subtree · `Cmd/Ctrl+Z` / `Shift+Cmd/Ctrl+Z` undo/redo ·
+  `Cmd/Ctrl+D` duplicate subtree · `Cmd/Ctrl+S` force-save
 - One-click Tidy Up auto-layout (tree or radial), powered by `d3-hierarchy`
 - Debounced autosave with optimistic-concurrency conflict detection (never silently overwrites
   someone else's newer edit)
 - Shareable links with `VIEW` or `EDIT` permission, no login required to open one
+- Optional real-time collaboration (see below) — live co-editing on top of a share link or your own
+  account, when the deployment has Liveblocks configured
 - Dashboard with thumbnails, rename, duplicate, delete
 - Export to PNG, JSON, and Markdown; import JSON or Markdown back in
 - Dark mode
@@ -21,11 +25,15 @@ links. Built full-stack with Next.js.
 
 - **Framework**: Next.js 15 (App Router, TypeScript) — React frontend + API routes as the backend
 - **Canvas**: [`@xyflow/react`](https://reactflow.dev) (React Flow) for the node/edge graph
-- **Layout**: `d3-hierarchy` for tree and radial auto-layout
+- **Layout**: `d3-hierarchy` for tree and radial auto-layout (forest-aware — lays out and separates
+  multiple independent primary ideas in one canvas)
 - **UI**: Tailwind CSS v4 + shadcn/ui (Radix primitives) + `lucide-react`
 - **State**: Zustand (editor store + undo/redo history store)
 - **Database**: Prisma ORM, SQLite locally, PostgreSQL-ready for production
 - **Auth**: Auth.js (NextAuth v5), credentials login, JWT sessions
+- **Real-time collaboration (optional)**: [Liveblocks](https://liveblocks.io) — the app's one
+  external SaaS dependency, and entirely opt-in. Everything else in this app is self-hosted; leave
+  `LIVEBLOCKS_SECRET_KEY` unset to run fully solo with zero collaboration UI
 - **Testing**: Vitest (unit) + Playwright (e2e)
 
 ## Getting started
@@ -39,6 +47,10 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+To enable real-time collaboration, add `LIVEBLOCKS_SECRET_KEY` to `.env` (get one from
+[liveblocks.io/dashboard/apikeys](https://liveblocks.io/dashboard/apikeys)) and restart the dev
+server. Leaving it unset is fully supported — the app runs exactly as it does without it.
 
 ## Scripts
 
@@ -136,14 +148,17 @@ change.
 
 ## Known limitations
 
-- **No real-time collaboration.** Sharing is link-based (view or edit), not live multi-cursor
-  editing — this was a deliberate scope decision, not a gap. Autosave's optimistic-concurrency
-  check (`clientUpdatedAt` vs. the server's current `updatedAt`) prevents silently clobbering a
-  newer save; it surfaces a "reload to see the latest version" prompt on conflict instead of
-  merging.
+- **Real-time collaboration is optional and off by default.** Without `LIVEBLOCKS_SECRET_KEY` set,
+  sharing is link-based (view or edit) with no live multi-cursor editing — autosave's
+  optimistic-concurrency check (`clientUpdatedAt` vs. the server's current `updatedAt`) prevents
+  silently clobbering a newer save, surfacing a "reload to see the latest version" prompt on
+  conflict instead of merging. With it configured, this is lifted for anyone in an active session.
 - **Rate limiting is in-memory and per-process** (`src/lib/rate-limit.ts`), so it resets on
   restart and isn't shared across multiple instances. Fine for a single-instance deployment; swap
-  in Redis (e.g. Upstash) before running more than one instance behind a load balancer.
+  in Redis (e.g. Upstash) before running more than one instance behind a load balancer. This also
+  applies to the new `/api/liveblocks-auth` route, which Liveblocks itself doesn't fix — it's a
+  newly anonymous-reachable endpoint (via share tokens) worth keeping in mind if you enable
+  collaboration on a multi-instance deployment.
 - **Thumbnails are inline base64**, capped in size, stored directly on the `Mindmap` row — there's
   no separate object storage. Fine at this scale; would need to move to blob storage (S3/R2) if
   thumbnails grow larger or the dataset gets large.
@@ -159,3 +174,10 @@ change.
 - [x] Phase 6 — Polish (dark mode, animations, responsive)
 - [x] Phase 7 — Tests
 - [x] Phase 8 — Deployment artifacts & docs
+- [x] Phase 9 — Forest model (multiple primary ideas per mindmap)
+- [x] Phase 10 — Liveblocks foundation (rooms, auth, opt-in switch)
+- [ ] Phase 11 — Liveblocks storage sync + presence UI
+- [ ] Phase 12 — Content richness (notes, tasks, attachments)
+- [ ] Phase 13 — Views (presentation mode & outline view)
+- [ ] Phase 14 — Export/import expansion (PDF, DOCX, PPTX)
+- [ ] Phase 15 — Organization (folders, tags, search, version history)

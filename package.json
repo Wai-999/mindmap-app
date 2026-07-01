@@ -26,6 +26,10 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
     "@hookform/resolvers": "^3.10.0",
+    "@liveblocks/client": "^3.21.0",
+    "@liveblocks/node": "^3.21.0",
+    "@liveblocks/react": "^3.21.0",
+    "@liveblocks/zustand": "^3.21.0",
     "@prisma/client": "^6.19.3",
     "@xyflow/react": "^12.11.1",
     "bcryptjs": "^3.0.3",
