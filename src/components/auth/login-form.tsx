@@ -63,6 +63,11 @@ export function LoginForm() {
               Account created. Sign in to continue.
             </p>
           )}
+          {searchParams.get("reset") && (
+            <p className="bg-primary/10 text-primary rounded-md px-3 py-2 text-sm">
+              Password updated. Sign in with your new password.
+            </p>
+          )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -77,7 +82,15 @@ export function LoginForm() {
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link
+                href="/forgot-password"
+                className="text-muted-foreground hover:text-foreground text-sm underline underline-offset-4"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <Input
               id="password"
               type="password"

@@ -34,7 +34,7 @@ links. Built full-stack with Next.js.
 - **UI**: Tailwind CSS v4 + shadcn/ui (Radix primitives) + `lucide-react`
 - **State**: Zustand (editor store + undo/redo history store)
 - **Database**: Prisma ORM, SQLite locally, PostgreSQL-ready for production
-- **Auth**: Auth.js (NextAuth v5), credentials login, JWT sessions
+- **Auth**: Auth.js (NextAuth v5), credentials login, JWT sessions, forgot/reset password
 - **Real-time collaboration (optional)**: [Liveblocks](https://liveblocks.io) — the app's one
   external SaaS dependency, and entirely opt-in. Everything else in this app is self-hosted; leave
   `LIVEBLOCKS_SECRET_KEY` unset to run fully solo with zero collaboration UI
@@ -55,6 +55,11 @@ Open [http://localhost:3000](http://localhost:3000).
 To enable real-time collaboration, add `LIVEBLOCKS_SECRET_KEY` to `.env` (get one from
 [liveblocks.io/dashboard/apikeys](https://liveblocks.io/dashboard/apikeys)) and restart the dev
 server. Leaving it unset is fully supported — the app runs exactly as it does without it.
+
+Forgot-password works out of the box with no setup: without SMTP configured, the reset link is
+logged to the server console instead of emailed (fine for local dev). To send real emails, add
+`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`EMAIL_FROM` to `.env` — any standard SMTP
+provider works.
 
 ## Scripts
 
