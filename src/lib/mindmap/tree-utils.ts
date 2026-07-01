@@ -1,16 +1,20 @@
 import type { MindmapEdge, MindmapNode } from "@/types/mindmap";
 
-// A mindmap is a strict tree: every node has at most one incoming edge. These helpers
-// all derive parent/child relationships from the edges array rather than storing them
-// redundantly on nodes, so there is exactly one source of truth for structure.
+// The hierarchy (parent→child) is a strict forest: every node has at most one
+// incoming hierarchy edge. A mindmap can *also* hold free-form "link" edges — cosmetic
+// relationship lines a user drew between any two nodes — which must never be mistaken
+// for structure, so every helper below filters them out before deriving parent/child.
+export function isHierarchyEdge(edge: MindmapEdge): boolean {
+  return edge.data?.kind !== "link";
+}
 
 export function getParentId(edges: MindmapEdge[], nodeId: string): string | null {
-  const edge = edges.find((e) => e.target === nodeId);
+  const edge = edges.find((e) => isHierarchyEdge(e) && e.target === nodeId);
   return edge ? edge.source : null;
 }
 
 export function getChildIds(edges: MindmapEdge[], nodeId: string): string[] {
-  return edges.filter((e) => e.source === nodeId).map((e) => e.target);
+  return edges.filter((e) => isHierarchyEdge(e) && e.source === nodeId).map((e) => e.target);
 }
 
 export function getDescendantIds(edges: MindmapEdge[], nodeId: string): string[] {
@@ -35,17 +39,18 @@ export function getRootNode(
   nodes: MindmapNode[],
   edges: MindmapEdge[],
 ): MindmapNode | null {
-  return nodes.find((n) => !edges.some((e) => e.target === n.id)) ?? null;
+  return nodes.find((n) => !edges.some((e) => isHierarchyEdge(e) && e.target === n.id)) ?? null;
 }
 
 // A mindmap can hold several independent primary ideas — a forest of trees, not a
-// single tree. This returns all of them (parentless nodes), in `nodes` array order.
+// single tree. This returns all of them (parentless nodes), in `nodes` array order. A
+// node linked to (but not hierarchically parented by) another node is still a root.
 export function getRootNodes(nodes: MindmapNode[], edges: MindmapEdge[]): MindmapNode[] {
-  return nodes.filter((n) => !edges.some((e) => e.target === n.id));
+  return nodes.filter((n) => !edges.some((e) => isHierarchyEdge(e) && e.target === n.id));
 }
 
 export function isRootNode(edges: MindmapEdge[], nodeId: string): boolean {
-  return !edges.some((e) => e.target === nodeId);
+  return !edges.some((e) => isHierarchyEdge(e) && e.target === nodeId);
 }
 
 export function getDepth(edges: MindmapEdge[], nodeId: string): number {

@@ -80,8 +80,35 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           : undefined,
       }}
     >
-      <Handle type="target" position={Position.Left} className="opacity-0" />
-      <Handle type="source" position={Position.Right} className="opacity-0" />
+      {/* Four connectable sides so a free-form link can be dragged in any direction —
+          not just the fixed left/right pair the hierarchy tree uses. Each gets an
+          explicit id so connection lookups never fall back to "whichever handle is
+          declared first," and connectionMode="loose" on the canvas lets any of them
+          both start and end a drag regardless of its declared source/target type. */}
+      <Handle
+        type="target"
+        id="left"
+        position={Position.Left}
+        className="size-2.5! border-2! bg-background! opacity-0 transition-opacity group-hover:opacity-100"
+      />
+      <Handle
+        type="source"
+        id="right"
+        position={Position.Right}
+        className="size-2.5! border-2! bg-background! opacity-0 transition-opacity group-hover:opacity-100"
+      />
+      <Handle
+        type="target"
+        id="top"
+        position={Position.Top}
+        className="size-2.5! border-2! bg-background! opacity-0 transition-opacity group-hover:opacity-100"
+      />
+      <Handle
+        type="source"
+        id="bottom"
+        position={Position.Bottom}
+        className="size-2.5! border-2! bg-background! opacity-0 transition-opacity group-hover:opacity-100"
+      />
 
       <div className="flex items-center gap-2">
         <span

@@ -5,7 +5,7 @@ import type { NodeChange, EdgeChange } from "@xyflow/react";
 
 import type { MindmapNode, MindmapEdge, MindmapNodeData } from "@/types/mindmap";
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
-import { getParentId, getChildIds, getSubtreeIds } from "@/lib/mindmap/tree-utils";
+import { getParentId, getChildIds, getSubtreeIds, isHierarchyEdge } from "@/lib/mindmap/tree-utils";
 import { resolveNewNodeColor, resolveNewRootColor } from "@/lib/mindmap/color";
 import { useHistoryStore } from "@/store/history-store";
 
@@ -60,6 +60,12 @@ interface EditorState {
   // A new independent primary idea — no parent edge. Also the fallback target when
   // addSiblingNode is called on a root (a root's "sibling" is a new root).
   addRootNode: () => string | null;
+  // A free-form relationship line between any two nodes (including across separate
+  // primary ideas), drawn by dragging between handles — distinct from a hierarchy edge
+  // and ignored by layout/export/subtree-delete. Returns the new edge's id, or null if
+  // rejected (self-loop, missing node, duplicate pair, or readOnly).
+  addLinkEdge: (source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null) => string | null;
+  removeLinkEdge: (edgeId: string) => void;
   deleteNodeAndSubtree: (nodeId: string) => void;
   duplicateSubtree: (nodeId: string) => string | null;
   applyLayout: (positions: Record<string, { x: number; y: number }>) => void;
@@ -305,6 +311,61 @@ export const useEditorStore = create<EditorState>()(
       return id;
     },
 
+    addLinkEdge: (source, target, sourceHandle, targetHandle) => {
+      const state = get();
+      if (state.readOnly) return null;
+      if (source === target) return null;
+      if (!state.nodes.some((n) => n.id === source) || !state.nodes.some((n) => n.id === target)) {
+        return null;
+      }
+      // One connection per unordered pair, regardless of kind — a second link between
+      // nodes already connected (by hierarchy or an earlier link) would just overlap
+      // the existing line with nothing new to show.
+      const alreadyConnected = state.edges.some(
+        (e) =>
+          (e.source === source && e.target === target) ||
+          (e.source === target && e.target === source),
+      );
+      if (alreadyConnected) return null;
+
+      commitHistory(state.nodes, state.edges);
+
+      const id = generateEdgeId(source, target);
+      const newEdge: MindmapEdge = {
+        id,
+        type: "mindmapEdge",
+        source,
+        target,
+        sourceHandle,
+        targetHandle,
+        data: { kind: "link" },
+      };
+
+      set((s) => ({
+        edges: [...s.edges, newEdge],
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+
+      return id;
+    },
+
+    removeLinkEdge: (edgeId) => {
+      const state = get();
+      if (state.readOnly) return;
+      // Guard against ever deleting a hierarchy edge through this path — it only ever
+      // gets called from the link edge's own delete button, but stays defensive.
+      const target = state.edges.find((e) => e.id === edgeId);
+      if (!target || isHierarchyEdge(target)) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        edges: s.edges.filter((e) => e.id !== edgeId),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
     deleteNodeAndSubtree: (nodeId) => {
       const state = get();
       if (state.readOnly) return;
@@ -346,8 +407,12 @@ export const useEditorStore = create<EditorState>()(
         };
       });
 
+      // Only hierarchy edges are cloned — a link edge fully inside the copied subtree
+      // would otherwise be created with no `data.kind` (defaulting to hierarchy),
+      // handing some cloned node a second incoming hierarchy edge and breaking the
+      // forest invariant that d3-hierarchy's stratify() (used by both layouts) relies on.
       const clonedEdges: MindmapEdge[] = state.edges
-        .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+        .filter((e) => isHierarchyEdge(e) && idMap.has(e.source) && idMap.has(e.target))
         .map((e) => ({
           id: generateEdgeId(idMap.get(e.source)!, idMap.get(e.target)!),
           type: "mindmapEdge",

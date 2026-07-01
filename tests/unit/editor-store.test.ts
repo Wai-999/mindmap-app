@@ -141,3 +141,79 @@ describe("editor-store applyRemoteContent (Liveblocks bridge)", () => {
     expect(useEditorStore.getState().nodes).toHaveLength(1);
   });
 });
+
+describe("editor-store addLinkEdge / removeLinkEdge (free-form connections)", () => {
+  beforeEach(() => {
+    load([makeNode("root"), makeNode("a"), makeNode("b")], [makeEdge("root", "a")]);
+  });
+
+  it("creates a link edge between two unconnected nodes", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "b");
+    expect(id).not.toBeNull();
+
+    const state = useEditorStore.getState();
+    const edge = state.edges.find((e) => e.id === id);
+    expect(edge?.data?.kind).toBe("link");
+    expect(edge?.source).toBe("a");
+    expect(edge?.target).toBe("b");
+    expect(state.dirty).toBe(true);
+  });
+
+  it("stores the dragged handle ids on the new link edge", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "b", "top", "bottom");
+    const edge = useEditorStore.getState().edges.find((e) => e.id === id);
+    expect(edge?.sourceHandle).toBe("top");
+    expect(edge?.targetHandle).toBe("bottom");
+  });
+
+  it("rejects a self-loop", () => {
+    const before = useEditorStore.getState().edges.length;
+    const id = useEditorStore.getState().addLinkEdge("a", "a");
+    expect(id).toBeNull();
+    expect(useEditorStore.getState().edges).toHaveLength(before);
+  });
+
+  it("rejects a duplicate connection between an already-connected pair", () => {
+    const before = useEditorStore.getState().edges.length;
+    const id = useEditorStore.getState().addLinkEdge("root", "a"); // already hierarchy-connected
+    expect(id).toBeNull();
+    expect(useEditorStore.getState().edges).toHaveLength(before);
+  });
+
+  it("rejects connecting to a node that doesn't exist", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "nope");
+    expect(id).toBeNull();
+  });
+
+  it("does nothing and returns null when read-only", () => {
+    load([makeNode("root"), makeNode("a"), makeNode("b")], [makeEdge("root", "a")], true);
+    const id = useEditorStore.getState().addLinkEdge("a", "b");
+    expect(id).toBeNull();
+  });
+
+  it("removeLinkEdge deletes only the targeted link edge", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "b")!;
+    useEditorStore.getState().removeLinkEdge(id);
+
+    const state = useEditorStore.getState();
+    expect(state.edges.some((e) => e.id === id)).toBe(false);
+    expect(state.edges.some((e) => e.source === "root" && e.target === "a")).toBe(true);
+  });
+
+  it("removeLinkEdge refuses to delete a hierarchy edge", () => {
+    const hierarchyEdgeId = useEditorStore.getState().edges[0].id;
+    useEditorStore.getState().removeLinkEdge(hierarchyEdgeId);
+    expect(useEditorStore.getState().edges.some((e) => e.id === hierarchyEdgeId)).toBe(true);
+  });
+
+  it("addLinkEdge/removeLinkEdge are each one Undo away", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "b")!;
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().edges.some((e) => e.id === id)).toBe(false);
+
+    useEditorStore.getState().redo();
+    useEditorStore.getState().removeLinkEdge(id);
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().edges.some((e) => e.id === id)).toBe(true);
+  });
+});

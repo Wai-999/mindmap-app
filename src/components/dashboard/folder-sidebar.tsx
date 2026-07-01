@@ -1,9 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Folder as FolderIcon, FolderPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  Folder as FolderIcon,
+  FolderPlus,
+  LayoutGrid,
+  MoreHorizontal,
+  Pencil,
+  PanelLeftClose,
+  PanelLeft,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +24,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { FolderSummary } from "@/types/mindmap";
+
+const COLLAPSED_STORAGE_KEY = "mindmap:folder-sidebar-collapsed";
 
 interface FolderSidebarProps {
   folders: FolderSummary[];
@@ -29,6 +40,22 @@ export function FolderSidebar({ folders, activeFolderId, onFoldersChange }: Fold
   const [draftName, setDraftName] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  // Starts expanded on both server and first client render (no localStorage access
+  // during render, which would throw during SSR) — the stored preference is applied
+  // a moment later via the effect below, same as the app's other client-only prefs.
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    setCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY) === "1");
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(COLLAPSED_STORAGE_KEY, next ? "1" : "0");
+      return next;
+    });
+  }
 
   function navigateToFolder(folderId: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -87,18 +114,90 @@ export function FolderSidebar({ folders, activeFolderId, onFoldersChange }: Fold
     }
   }
 
+  if (collapsed) {
+    return (
+      <nav className="flex w-12 shrink-0 flex-col items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={toggleCollapsed}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+        >
+          <PanelLeft className="size-4" />
+        </Button>
+
+        <button
+          type="button"
+          onClick={() => navigateToFolder(null)}
+          title="All mindmaps"
+          aria-label="All mindmaps"
+          className={cn(
+            "hover:bg-accent flex size-8 items-center justify-center rounded-md",
+            activeFolderId === null && "bg-accent",
+          )}
+        >
+          <LayoutGrid className="size-4" />
+        </button>
+
+        {folders.map((folder) => (
+          <button
+            key={folder.id}
+            type="button"
+            onClick={() => navigateToFolder(folder.id)}
+            title={folder.name}
+            aria-label={folder.name}
+            className={cn(
+              "hover:bg-accent flex size-8 items-center justify-center rounded-md",
+              activeFolderId === folder.id && "bg-accent",
+            )}
+          >
+            <FolderIcon className="size-4" />
+          </button>
+        ))}
+
+        <button
+          type="button"
+          onClick={() => {
+            setCollapsed(false);
+            localStorage.setItem(COLLAPSED_STORAGE_KEY, "0");
+            setCreating(true);
+          }}
+          title="New folder"
+          aria-label="New folder"
+          className="hover:bg-accent text-muted-foreground flex size-8 items-center justify-center rounded-md"
+        >
+          <FolderPlus className="size-4" />
+        </button>
+      </nav>
+    );
+  }
+
   return (
     <nav className="w-48 shrink-0 space-y-0.5">
-      <button
-        type="button"
-        onClick={() => navigateToFolder(null)}
-        className={cn(
-          "hover:bg-accent w-full rounded-md px-2 py-1.5 text-left text-sm",
-          activeFolderId === null && "bg-accent font-medium",
-        )}
-      >
-        All mindmaps
-      </button>
+      <div className="flex items-center justify-between gap-1">
+        <button
+          type="button"
+          onClick={() => navigateToFolder(null)}
+          className={cn(
+            "hover:bg-accent flex-1 rounded-md px-2 py-1.5 text-left text-sm",
+            activeFolderId === null && "bg-accent font-medium",
+          )}
+        >
+          All mindmaps
+        </button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0"
+          onClick={toggleCollapsed}
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+        >
+          <PanelLeftClose className="size-3.5" />
+        </Button>
+      </div>
 
       {folders.map((folder) => (
         <div key={folder.id} className="group flex items-center gap-1">

@@ -16,3 +16,12 @@ export function deleteNodeWithUndo(nodeId: string) {
     action: { label: "Undo", onClick: () => useEditorStore.getState().undo() },
   });
 }
+
+// Same toast-with-Undo affordance for removing a free-form link edge.
+export function removeLinkEdgeWithUndo(edgeId: string) {
+  const store = useEditorStore.getState();
+  store.removeLinkEdge(edgeId);
+  toast("Connection removed", {
+    action: { label: "Undo", onClick: () => useEditorStore.getState().undo() },
+  });
+}

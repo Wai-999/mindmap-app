@@ -11,6 +11,7 @@ import {
   getDepth,
   filterVisible,
   getHiddenIds,
+  isHierarchyEdge,
 } from "@/lib/mindmap/tree-utils";
 import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
 
@@ -25,6 +26,10 @@ function makeNode(id: string, collapsed = false): MindmapNode {
 
 function makeEdge(source: string, target: string): MindmapEdge {
   return { id: `e_${source}_${target}`, type: "mindmapEdge", source, target };
+}
+
+function makeLinkEdge(source: string, target: string): MindmapEdge {
+  return { id: `e_${source}_${target}_link`, type: "mindmapEdge", source, target, data: { kind: "link" } };
 }
 
 // root
@@ -108,6 +113,35 @@ describe("tree-utils", () => {
     const idsToRemove = new Set(getSubtreeIds(edges, "a"));
     const remaining = nodes.filter((n) => !idsToRemove.has(n.id));
     expect(remaining.map((n) => n.id).sort()).toEqual(["b", "b1", "root"]);
+  });
+
+  describe("free-form link edges never count as hierarchy", () => {
+    it("isHierarchyEdge distinguishes kind", () => {
+      expect(isHierarchyEdge(makeEdge("a", "b"))).toBe(true);
+      expect(isHierarchyEdge(makeLinkEdge("a", "b"))).toBe(false);
+    });
+
+    it("getChildIds and getParentId ignore a link edge between siblings", () => {
+      const linkedEdges = [...edges, makeLinkEdge("a1", "a2")];
+      expect(getChildIds(linkedEdges, "a1")).toEqual([]);
+      expect(getParentId(linkedEdges, "a2")).toBe("a");
+    });
+
+    it("a link edge does not make a node's target count as a root", () => {
+      const forestNodes = [...nodes, makeNode("root2"), makeNode("c")];
+      const forestEdges = [...edges, makeEdge("root2", "c"), makeLinkEdge("a1", "root2")];
+
+      // root2 is still a root even though a link edge targets it — only a *hierarchy*
+      // edge targeting a node disqualifies it from being a forest root.
+      const roots = getRootNodes(forestNodes, forestEdges);
+      expect(roots.map((n) => n.id).sort()).toEqual(["root", "root2"]);
+      expect(isRootNode(forestEdges, "root2")).toBe(true);
+    });
+
+    it("a link edge between two nodes in the same subtree does not widen the cascade-delete set", () => {
+      const linkedEdges = [...edges, makeLinkEdge("a1", "b1")];
+      expect(getSubtreeIds(linkedEdges, "a").sort()).toEqual(["a", "a1", "a2"]);
+    });
   });
 
   describe("filterVisible / getHiddenIds", () => {

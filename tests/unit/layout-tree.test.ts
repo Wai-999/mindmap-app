@@ -73,5 +73,18 @@ describe("computeTreeLayout", () => {
       const secondTreeYs = ["root2", "d"].map((id) => positions[id].y);
       expect(Math.min(...secondTreeYs)).toBeGreaterThan(Math.max(...firstTreeYs));
     });
+
+    it("a free-form link edge crossing between two trees does not merge them into one", () => {
+      const linkedEdges: MindmapEdge[] = [
+        ...forestEdges,
+        { id: "e_a_d_link", type: "mindmapEdge", source: "a", target: "d", data: { kind: "link" } },
+      ];
+      const positions = computeTreeLayout(forestNodes, linkedEdges, "LR");
+      const firstTreeYs = ["root", "a", "b", "c"].map((id) => positions[id].y);
+      const secondTreeYs = ["root2", "d"].map((id) => positions[id].y);
+      // Still two separate trees stacked with a gap, exactly as without the link edge.
+      expect(Math.min(...secondTreeYs)).toBeGreaterThan(Math.max(...firstTreeYs));
+      expect(positions.root2.x).toBeCloseTo(positions.root.x);
+    });
   });
 });

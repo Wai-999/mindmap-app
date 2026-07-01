@@ -29,6 +29,11 @@ export const mindmapNodeSchema = z.object({
 export const edgeDataSchema = z.object({
   depth: z.number().optional(),
   colorOverride: z.string().max(20).optional(),
+  // Absent/"hierarchy" = a structural parent→child edge (drives layout, export, and
+  // subtree delete/collapse). "link" = a free-form relationship line the user drew by
+  // dragging between two nodes' handles — purely cosmetic, ignored by every tree-utils
+  // helper so it never affects layout, forest-root detection, or cascade delete.
+  kind: z.enum(["hierarchy", "link"]).optional(),
 });
 
 export const mindmapEdgeSchema = z.object({
@@ -36,6 +41,11 @@ export const mindmapEdgeSchema = z.object({
   type: z.literal("mindmapEdge").optional(),
   source: z.string(),
   target: z.string(),
+  // Which side of the node the connector was dragged from/to (e.g. "top", "bottom") —
+  // only ever set on "link" edges, since hierarchy edges always use the default
+  // Left/Right handles and render fine without an explicit handle id.
+  sourceHandle: z.string().max(20).nullable().optional(),
+  targetHandle: z.string().max(20).nullable().optional(),
   data: edgeDataSchema.optional(),
 });
 
