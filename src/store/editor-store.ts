@@ -18,6 +18,8 @@ interface EditorState {
   edges: MindmapEdge[];
   selectedNodeId: string | null;
   editingNodeId: string | null;
+  // True for a share link with VIEW permission — canvas renders but nothing mutates.
+  readOnly: boolean;
 
   // Bumped by every content-affecting mutation (not selection/editing-focus changes).
   // autosave.ts subscribes to this specifically so it can debounce "time since the
@@ -33,6 +35,7 @@ interface EditorState {
     nodes: MindmapNode[];
     edges: MindmapEdge[];
     updatedAt: string;
+    readOnly?: boolean;
   }) => void;
 
   onNodesChange: (changes: NodeChange<MindmapNode>[]) => void;
@@ -98,12 +101,13 @@ export const useEditorStore = create<EditorState>()(
     edges: [],
     selectedNodeId: null,
     editingNodeId: null,
+    readOnly: false,
     revision: 0,
     dirty: false,
     saveStatus: "idle",
     lastSyncedUpdatedAt: null,
 
-    loadMindmap: ({ id, title, nodes, edges, updatedAt }) => {
+    loadMindmap: ({ id, title, nodes, edges, updatedAt, readOnly = false }) => {
       useHistoryStore.getState().reset();
       set({
         mindmapId: id,
@@ -112,6 +116,7 @@ export const useEditorStore = create<EditorState>()(
         edges,
         selectedNodeId: null,
         editingNodeId: null,
+        readOnly,
         revision: 0,
         dirty: false,
         saveStatus: "idle",
@@ -142,12 +147,19 @@ export const useEditorStore = create<EditorState>()(
     },
 
     selectNode: (id) => set({ selectedNodeId: id }),
-    setEditingNode: (id) => set({ editingNodeId: id }),
+    setEditingNode: (id) => {
+      if (get().readOnly) return;
+      set({ editingNodeId: id });
+    },
 
-    setTitle: (title) => set((s) => ({ title, dirty: true, revision: s.revision + 1 })),
+    setTitle: (title) => {
+      if (get().readOnly) return;
+      set((s) => ({ title, dirty: true, revision: s.revision + 1 }));
+    },
 
     updateNodeLabel: (id, label) => {
       const state = get();
+      if (state.readOnly) return;
       const target = state.nodes.find((n) => n.id === id);
       if (!target || target.data.label === label) return;
 
@@ -161,6 +173,7 @@ export const useEditorStore = create<EditorState>()(
 
     updateNodeColor: (id, color) => {
       const state = get();
+      if (state.readOnly) return;
       const target = state.nodes.find((n) => n.id === id);
       if (!target || target.data.color === color) return;
 
@@ -174,7 +187,9 @@ export const useEditorStore = create<EditorState>()(
 
     // Not committed to undo history — collapsing/expanding is a view convenience, not
     // a content edit, and undo-ing it when the user expected their last edit to revert
-    // would be surprising.
+    // would be surprising. Deliberately allowed even when readOnly: a view-only shared
+    // visitor can still collapse branches to explore a large mindmap locally — it's
+    // harmless since no autosave subscriber exists in that mode to persist it.
     toggleCollapsed: (id) =>
       set((s) => ({
         nodes: s.nodes.map((n) =>
@@ -186,6 +201,7 @@ export const useEditorStore = create<EditorState>()(
 
     addChildNode: (parentId) => {
       const state = get();
+      if (state.readOnly) return null;
       const parent = state.nodes.find((n) => n.id === parentId);
       if (!parent) return null;
 
@@ -229,7 +245,7 @@ export const useEditorStore = create<EditorState>()(
 
     deleteNodeAndSubtree: (nodeId) => {
       const state = get();
-      if (isRootNode(state.edges, nodeId)) return;
+      if (state.readOnly || isRootNode(state.edges, nodeId)) return;
 
       commitHistory(state.nodes, state.edges);
 
@@ -246,6 +262,7 @@ export const useEditorStore = create<EditorState>()(
 
     duplicateSubtree: (nodeId) => {
       const state = get();
+      if (state.readOnly) return null;
       const parentId = getParentId(state.edges, nodeId);
       if (!parentId) return null; // duplicating the root as a "sibling" has no parent to attach to
 
@@ -295,6 +312,7 @@ export const useEditorStore = create<EditorState>()(
 
     applyLayout: (positions) => {
       const state = get();
+      if (state.readOnly) return;
       commitHistory(state.nodes, state.edges);
 
       set((s) => ({
@@ -306,6 +324,7 @@ export const useEditorStore = create<EditorState>()(
 
     undo: () => {
       const state = get();
+      if (state.readOnly) return;
       const restored = useHistoryStore.getState().undo({ nodes: state.nodes, edges: state.edges });
       if (!restored) return;
       set({
@@ -320,6 +339,7 @@ export const useEditorStore = create<EditorState>()(
 
     redo: () => {
       const state = get();
+      if (state.readOnly) return;
       const restored = useHistoryStore.getState().redo({ nodes: state.nodes, edges: state.edges });
       if (!restored) return;
       set({

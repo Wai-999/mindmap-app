@@ -7,12 +7,15 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { useEditorStore } from "@/store/editor-store";
 import { initAutosave } from "@/store/autosave";
 import { useKeyboardShortcuts } from "@/components/editor/keyboard/use-keyboard-shortcuts";
-import { EditorHeader } from "@/components/editor/editor-header";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
+import { SharedViewBanner } from "@/components/shared-view/shared-view-banner";
 import type { MindmapContent } from "@/types/mindmap";
+import type { SharePermission } from "@/types/share";
 
-interface MindmapEditorShellProps {
+interface SharedMindmapViewerProps {
+  token: string;
+  permission: SharePermission;
   mindmap: {
     id: string;
     title: string;
@@ -21,8 +24,10 @@ interface MindmapEditorShellProps {
   };
 }
 
-export function MindmapEditorShell({ mindmap }: MindmapEditorShellProps) {
+export function SharedMindmapViewer({ token, permission, mindmap }: SharedMindmapViewerProps) {
   const loadMindmap = useEditorStore((s) => s.loadMindmap);
+  const isEditable = permission === "EDIT";
+  const endpoint = `/api/shared/${token}`;
 
   useEffect(() => {
     loadMindmap({
@@ -31,15 +36,16 @@ export function MindmapEditorShell({ mindmap }: MindmapEditorShellProps) {
       nodes: mindmap.content.nodes,
       edges: mindmap.content.edges,
       updatedAt: mindmap.updatedAt,
+      readOnly: !isEditable,
     });
-    // Intentionally scoped to mindmap.id only — this should reset the canvas when
-    // navigating to a different mindmap, not on every incidental prop re-render.
+    // Intentionally scoped to mindmap.id only — see mindmap-editor-shell.tsx.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mindmap.id]);
 
   useEffect(() => {
-    return initAutosave(`/api/mindmaps/${mindmap.id}`);
-  }, [mindmap.id]);
+    if (!isEditable) return;
+    return initAutosave(endpoint);
+  }, [isEditable, endpoint]);
 
   useEffect(() => {
     function handleConflict() {
@@ -53,15 +59,15 @@ export function MindmapEditorShell({ mindmap }: MindmapEditorShellProps) {
     return () => window.removeEventListener("mindmap:conflict", handleConflict);
   }, []);
 
-  useKeyboardShortcuts(`/api/mindmaps/${mindmap.id}`);
+  useKeyboardShortcuts(endpoint);
 
   return (
     <div className="flex h-svh flex-col">
-      <EditorHeader />
+      <SharedViewBanner title={mindmap.title} permission={permission} />
       <ReactFlowProvider>
         <div className="relative flex-1">
           <MindmapCanvas />
-          <FloatingToolbar />
+          {isEditable && <FloatingToolbar />}
         </div>
       </ReactFlowProvider>
     </div>

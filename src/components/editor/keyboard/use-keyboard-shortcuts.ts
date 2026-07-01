@@ -11,10 +11,14 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA";
 }
 
-export function useKeyboardShortcuts(mindmapId: string) {
+// endpoint is the full PATCH URL (owner route or a share-link route when editing
+// through a share link) — forwarded to forceSave for Cmd+S.
+export function useKeyboardShortcuts(endpoint: string) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const store = useEditorStore.getState();
+      if (store.readOnly) return;
+
       const editing = isEditableTarget(e.target);
       const isMod = e.metaKey || e.ctrlKey;
 
@@ -22,7 +26,7 @@ export function useKeyboardShortcuts(mindmapId: string) {
       // and should feel meaningful even though autosave already covers the user.
       if (isMod && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void forceSave(mindmapId);
+        void forceSave(endpoint);
         return;
       }
 
@@ -68,5 +72,5 @@ export function useKeyboardShortcuts(mindmapId: string) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mindmapId]);
+  }, [endpoint]);
 }

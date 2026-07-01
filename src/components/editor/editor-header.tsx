@@ -8,8 +8,10 @@ import { useEditorStore } from "@/store/editor-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SaveStatusIndicator } from "@/components/editor/save-status-indicator";
+import { ShareDialog } from "@/components/editor/share/share-dialog";
 
 export function EditorHeader() {
+  const mindmapId = useEditorStore((s) => s.mindmapId);
   const title = useEditorStore((s) => s.title);
   const setTitle = useEditorStore((s) => s.setTitle);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -59,7 +61,10 @@ export function EditorHeader() {
           </button>
         )}
       </div>
-      <SaveStatusIndicator />
+      <div className="flex items-center gap-3">
+        <SaveStatusIndicator />
+        {mindmapId && <ShareDialog mindmapId={mindmapId} />}
+      </div>
     </header>
   );
 }

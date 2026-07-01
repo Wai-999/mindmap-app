@@ -1,4 +1,5 @@
 import { useEditorStore } from "@/store/editor-store";
+import { captureThumbnail } from "@/lib/mindmap/capture-thumbnail";
 import type { MindmapContent } from "@/types/mindmap";
 
 const DEBOUNCE_MS = 800;
@@ -9,7 +10,12 @@ export interface ConflictDetail {
   updatedAt: string;
 }
 
-async function flush(mindmapId: string) {
+// endpoint is the full PATCH URL — either the owner route (/api/mindmaps/[id]) or the
+// public share-link route (/api/shared/[token]) when editing through a shared link.
+// includeThumbnail is skipped on the unload/visibility-change flush path, where the
+// priority is getting the content save out before the page disappears, not spending
+// extra time rasterizing a preview image.
+async function flush(endpoint: string, includeThumbnail = true) {
   const state = useEditorStore.getState();
   if (!state.dirty || state.saveStatus === "saving") return;
 
@@ -18,8 +24,10 @@ async function flush(mindmapId: string) {
 
   useEditorStore.getState().markSaving();
 
+  const thumbnail = includeThumbnail ? await captureThumbnail().catch(() => null) : null;
+
   try {
-    const res = await fetch(`/api/mindmaps/${mindmapId}`, {
+    const res = await fetch(endpoint, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       keepalive: true,
@@ -27,6 +35,7 @@ async function flush(mindmapId: string) {
         title: state.title,
         content,
         clientUpdatedAt: state.lastSyncedUpdatedAt,
+        thumbnail,
       }),
     });
 
@@ -51,21 +60,21 @@ async function flush(mindmapId: string) {
   }
 }
 
-export function initAutosave(mindmapId: string): () => void {
+export function initAutosave(endpoint: string): () => void {
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   const unsubscribe = useEditorStore.subscribe(
     (s) => s.revision,
     () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => void flush(mindmapId), DEBOUNCE_MS);
+      debounceTimer = setTimeout(() => void flush(endpoint), DEBOUNCE_MS);
     },
   );
 
-  const fallback = setInterval(() => void flush(mindmapId), FALLBACK_INTERVAL_MS);
+  const fallback = setInterval(() => void flush(endpoint), FALLBACK_INTERVAL_MS);
 
   function handleVisibilityOrUnload() {
-    if (useEditorStore.getState().dirty) void flush(mindmapId);
+    if (useEditorStore.getState().dirty) void flush(endpoint, false);
   }
   window.addEventListener("beforeunload", handleVisibilityOrUnload);
   document.addEventListener("visibilitychange", handleVisibilityOrUnload);
@@ -79,6 +88,6 @@ export function initAutosave(mindmapId: string): () => void {
   };
 }
 
-export function forceSave(mindmapId: string): Promise<void> {
-  return flush(mindmapId);
+export function forceSave(endpoint: string): Promise<void> {
+  return flush(endpoint);
 }

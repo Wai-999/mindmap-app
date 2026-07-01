@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function FloatingToolbar() {
+  const readOnly = useEditorStore((s) => s.readOnly);
   const selectedNodeId = useEditorStore((s) => s.selectedNodeId);
   const isRoot = useEditorStore((s) =>
     selectedNodeId ? isRootNode(s.edges, selectedNodeId) : false,
@@ -23,6 +24,8 @@ export function FloatingToolbar() {
   const redo = useEditorStore((s) => s.redo);
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
+
+  if (readOnly) return null;
 
   return (
     <div className="bg-card absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border p-1.5 shadow-lg">

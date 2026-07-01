@@ -16,6 +16,7 @@ const edgeTypes = { mindmapEdge: MindmapEdge };
 export function MindmapCanvas() {
   const nodes = useEditorStore((s) => s.nodes);
   const edges = useEditorStore((s) => s.edges);
+  const readOnly = useEditorStore((s) => s.readOnly);
   const onNodesChange = useEditorStore((s) => s.onNodesChange);
   const onEdgesChange = useEditorStore((s) => s.onEdgesChange);
   const selectNode = useEditorStore((s) => s.selectNode);
@@ -34,10 +35,11 @@ export function MindmapCanvas() {
 
   const handleNodeDoubleClick: NodeMouseHandler = useCallback(
     (event, node) => {
+      if (readOnly) return;
       event.stopPropagation();
       setEditingNode(node.id);
     },
-    [setEditingNode],
+    [readOnly, setEditingNode],
   );
 
   return (
@@ -53,6 +55,7 @@ export function MindmapCanvas() {
       onNodeDragStart={commitBeforeDrag}
       onPaneClick={() => selectNode(null)}
       deleteKeyCode={null}
+      nodesDraggable={!readOnly}
       nodesConnectable={false}
       elementsSelectable={false}
       edgesFocusable={false}

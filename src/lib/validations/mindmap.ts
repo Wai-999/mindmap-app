@@ -51,9 +51,11 @@ export const createMindmapSchema = z.object({
 export const updateMindmapSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   content: mindmapContentSchema.optional(),
-  // ISO timestamp of the version the client last synced — see lib/permissions.ts /
-  // the PATCH handler for the optimistic-concurrency check this enables.
-  clientUpdatedAt: z.string(),
+  // ISO timestamp of the version the client last synced. Required (and enforced) only
+  // when `content` is present — see lib/mindmap/update-content.ts. Title-only requests
+  // (e.g. a dashboard rename) skip the concurrency check entirely since they can't
+  // clobber someone else's in-progress canvas edits.
+  clientUpdatedAt: z.string().optional(),
   // Size-capped base64 data URL; oversized thumbnails are dropped, not rejected —
   // see the PATCH handler.
   thumbnail: z.string().max(200_000).nullable().optional(),
