@@ -4,28 +4,29 @@ import Link from "next/link";
 import { FileQuestion } from "lucide-react";
 
 import { MindmapCardMenu } from "@/components/dashboard/mindmap-card-menu";
-import type { MindmapSummary } from "@/types/mindmap";
-
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const diffMin = Math.round(diffMs / 60_000);
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-  if (Math.abs(diffMin) < 60) return rtf.format(-diffMin, "minute");
-  const diffHour = Math.round(diffMin / 60);
-  if (Math.abs(diffHour) < 24) return rtf.format(-diffHour, "hour");
-  const diffDay = Math.round(diffHour / 24);
-  return rtf.format(-diffDay, "day");
-}
+import { Badge } from "@/components/ui/badge";
+import { relativeTime } from "@/lib/utils";
+import type { MindmapSummary, FolderSummary, TagSummary } from "@/types/mindmap";
 
 interface MindmapCardProps {
   mindmap: MindmapSummary;
+  folders: FolderSummary[];
   onRename: (id: string, title: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onMove: (id: string, folderId: string | null) => void;
+  onTagsChange: (id: string, tags: TagSummary[]) => void;
 }
 
-export function MindmapCard({ mindmap, onRename, onDuplicate, onDelete }: MindmapCardProps) {
+export function MindmapCard({
+  mindmap,
+  folders,
+  onRename,
+  onDuplicate,
+  onDelete,
+  onMove,
+  onTagsChange,
+}: MindmapCardProps) {
   return (
     <div className="group bg-card relative overflow-hidden rounded-xl border transition-shadow hover:shadow-md">
       <Link href={`/mindmap/${mindmap.id}`} className="block">
@@ -44,14 +45,26 @@ export function MindmapCard({ mindmap, onRename, onDuplicate, onDelete }: Mindma
           <p className="text-muted-foreground mt-0.5 text-xs">
             Edited {relativeTime(mindmap.updatedAt)}
           </p>
+          {mindmap.tags.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {mindmap.tags.map((tag) => (
+                <Badge key={tag.id} variant="secondary" className="text-[10px]">
+                  {tag.name}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
       </Link>
       <div className="absolute top-2 right-2">
         <MindmapCardMenu
           mindmap={mindmap}
+          folders={folders}
           onRename={onRename}
           onDuplicate={onDuplicate}
           onDelete={onDelete}
+          onMove={onMove}
+          onTagsChange={onTagsChange}
         />
       </div>
     </div>

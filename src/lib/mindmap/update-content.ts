@@ -3,6 +3,7 @@ import type { Mindmap } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { encodeContent, decodeContent } from "@/lib/mindmap/content-codec";
 import { deleteAttachment } from "@/lib/mindmap/attachments";
+import { snapshotMindmapVersion } from "@/lib/mindmap/versions";
 import type { MindmapContent } from "@/types/mindmap";
 
 export interface MindmapUpdateInput {
@@ -66,6 +67,11 @@ export async function applyMindmapUpdate(
         .then((orphaned) => Promise.all(orphaned.map((a) => deleteAttachment(a))))
         .catch(() => undefined);
     }
+
+    // Snapshot for version history — only on real content changes, same branch that
+    // already skips the concurrency check for title-only saves, since those can't
+    // meaningfully be "restored" the way a content version can.
+    await snapshotMindmapVersion(current.id, updated.title, updated.content).catch(() => undefined);
   }
 
   return { ok: true, updatedAt: updated.updatedAt.toISOString() };

@@ -15,7 +15,15 @@ export async function GET() {
   const mindmaps = await prisma.mindmap.findMany({
     where: { ownerId: session.user.id },
     orderBy: { updatedAt: "desc" },
-    select: { id: true, title: true, updatedAt: true, createdAt: true, thumbnail: true },
+    select: {
+      id: true,
+      title: true,
+      updatedAt: true,
+      createdAt: true,
+      thumbnail: true,
+      folderId: true,
+      tags: { select: { id: true, name: true } },
+    },
   });
 
   const summaries: MindmapSummary[] = mindmaps.map((m) => ({
@@ -24,6 +32,8 @@ export async function GET() {
     updatedAt: m.updatedAt.toISOString(),
     createdAt: m.createdAt.toISOString(),
     thumbnail: m.thumbnail,
+    folderId: m.folderId,
+    tags: m.tags,
   }));
 
   return jsonOk(summaries);

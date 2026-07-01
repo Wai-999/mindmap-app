@@ -11,6 +11,7 @@ import { SaveStatusIndicator } from "@/components/editor/save-status-indicator";
 import { ShareDialog } from "@/components/editor/share/share-dialog";
 import { PresenceAvatars } from "@/components/editor/collab/presence-avatars";
 import { PresentButton } from "@/components/editor/presentation/present-button";
+import { VersionHistoryPanel } from "@/components/editor/versions/version-history-panel";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 interface EditorHeaderProps {
@@ -82,6 +83,7 @@ export function EditorHeader({ viewMode, onToggleViewMode }: EditorHeaderProps) 
           {viewMode === "canvas" ? <AlignLeft className="size-4" /> : <LayoutGrid className="size-4" />}
         </Button>
         {mindmapId && <PresentButton endpoint={`/api/mindmaps/${mindmapId}`} />}
+        {mindmapId && <VersionHistoryPanel mindmapId={mindmapId} />}
         <SaveStatusIndicator />
         <ThemeToggle />
         {mindmapId && <ShareDialog mindmapId={mindmapId} />}

@@ -27,6 +27,8 @@ model User {
   accounts Account[]
   sessions Session[]
   mindmaps Mindmap[]
+  folders  Folder[]
+  tags     Tag[]
 
   @@map("users")
 }
@@ -88,19 +90,71 @@ model Mindmap {
   contentVersion Int      @default(1)
   thumbnail      String? // small size-capped base64 PNG data URL for dashboard cards
 
-  ownerId   String
+  ownerId  String
+  folderId String? // null = unfiled, shown at the top level of the dashboard
+
   createdAt DateTime @default(now())
   // Set explicitly by application code on every write (not @updatedAt) — this is the
   // value autosave's optimistic-concurrency check compares against, so it must only
   // change on real content/title writes, never as a side effect of an unrelated update.
   updatedAt DateTime @default(now())
 
-  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  folder      Folder?          @relation(fields: [folderId], references: [id], onDelete: SetNull)
   shareLinks  ShareLink[]
   attachments Attachment[]
+  versions    MindmapVersion[]
+  tags        Tag[]
 
   @@index([ownerId])
+  @@index([folderId])
   @@map("mindmaps")
+}
+
+// Flat (no nesting) — keeps folder UI and queries simple; a mindmap belongs to at most
+// one folder, or none (unfiled).
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  mindmaps Mindmap[]
+
+  @@index([ownerId])
+  @@map("folders")
+}
+
+model Tag {
+  id      String @id @default(cuid())
+  name    String
+  ownerId String
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  mindmaps Mindmap[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+  @@map("tags")
+}
+
+// Snapshot of a mindmap's content taken on every successful autosave — lets a user
+// browse and restore an earlier version. Pruned to the most recent 50 per mindmap
+// (see lib/mindmap/update-content.ts), mirroring history-store.ts's capped in-memory
+// undo stack — a much smaller cap since these are durable DB rows, not memory, and
+// "restore an hour-old version" doesn't need per-keystroke granularity.
+model MindmapVersion {
+  id        String   @id @default(cuid())
+  mindmapId String
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+
+  mindmap Mindmap @relation(fields: [mindmapId], references: [id], onDelete: Cascade)
+
+  @@index([mindmapId, createdAt])
+  @@map("mindmap_versions")
 }
 
 // Not a Prisma `enum` — SQLite has no native enum type support, so this is a

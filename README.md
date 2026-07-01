@@ -21,7 +21,8 @@ links. Built full-stack with Next.js.
   panel opened from each node
 - Full-screen presentation mode and an alternate outline (list) view of the same content
 - Dashboard with thumbnails, rename, duplicate, delete
-- Export to PNG, JSON, and Markdown; import JSON or Markdown back in
+- Export to PNG, PDF, JSON, Markdown, Word (.docx), or PowerPoint (.pptx); import JSON or
+  Markdown back in
 - Dark mode
 
 ## Tech stack
@@ -190,5 +191,5 @@ change.
 - [x] Phase 11 — Liveblocks storage sync + presence UI
 - [x] Phase 12 — Content richness (notes, tasks, attachments)
 - [x] Phase 13 — Views (presentation mode & outline view)
-- [ ] Phase 14 — Export/import expansion (PDF, DOCX, PPTX)
+- [x] Phase 14 — Export/import expansion (PDF, DOCX, PPTX)
 - [ ] Phase 15 — Organization (folders, tags, search, version history)

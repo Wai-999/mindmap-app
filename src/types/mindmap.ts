@@ -21,4 +21,16 @@ export interface MindmapSummary {
   updatedAt: string;
   createdAt: string;
   thumbnail: string | null;
+  folderId: string | null;
+  tags: TagSummary[];
+}
+
+export interface FolderSummary {
+  id: string;
+  name: string;
+}
+
+export interface TagSummary {
+  id: string;
+  name: string;
 }
