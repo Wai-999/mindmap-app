@@ -1,5 +1,10 @@
 generator client {
   provider = "prisma-client-js"
+  // "native" covers local dev; the linux-musl targets cover the Dockerfile's
+  // node:24-alpine image on either CPU architecture — without these, a client
+  // generated on a developer's Mac would ship a macOS-only query engine binary
+  // that can't run inside the container.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
 }
 
 datasource db {

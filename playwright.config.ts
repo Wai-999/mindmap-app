@@ -13,16 +13,21 @@ export default defineConfig({
   retries: 0,
   reporter: "list",
   use: {
-    baseURL: "http://localhost:3100",
+    baseURL: "http://127.0.0.1:3100",
     trace: "on-first-retry",
   },
   webServer: {
     command: "npm run dev -- --port 3100",
-    url: "http://localhost:3100",
+    url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
       DATABASE_URL: `file:${testDbPath}`,
+      // Without this, the server falls back to .env's NEXTAUTH_URL (port 3000), and
+      // NextAuth's own redirects (e.g. middleware sending a logged-out visitor to
+      // /login) get built against that dead port instead of the actual 3100 the
+      // tests run against.
+      NEXTAUTH_URL: "http://127.0.0.1:3100",
     },
   },
   projects: [
