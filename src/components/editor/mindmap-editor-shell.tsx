@@ -10,6 +10,7 @@ import { useKeyboardShortcuts } from "@/components/editor/keyboard/use-keyboard-
 import { EditorHeader } from "@/components/editor/editor-header";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
+import { NodeInspectorPanel } from "@/components/editor/inspector/node-inspector-panel";
 import { LiveblocksRoomProvider } from "@/components/editor/collab/liveblocks-room-provider";
 import { mindmapRoomId } from "@/lib/liveblocks/room-id";
 import type { MindmapContent } from "@/types/mindmap";
@@ -70,6 +71,7 @@ export function MindmapEditorShell({
         <div className="relative flex-1">
           <MindmapCanvas />
           <FloatingToolbar />
+          <NodeInspectorPanel endpoint={`/api/mindmaps/${mindmap.id}`} />
         </div>
       </ReactFlowProvider>
     </div>

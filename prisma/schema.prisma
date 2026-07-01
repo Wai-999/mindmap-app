@@ -95,8 +95,9 @@ model Mindmap {
   // change on real content/title writes, never as a side effect of an unrelated update.
   updatedAt DateTime @default(now())
 
-  owner      User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  shareLinks ShareLink[]
+  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  shareLinks  ShareLink[]
+  attachments Attachment[]
 
   @@index([ownerId])
   @@map("mindmaps")
@@ -118,4 +119,26 @@ model ShareLink {
 
   @@index([mindmapId])
   @@map("share_links")
+}
+
+// A file attached to a specific node. `nodeId` is a plain correlated string, not a
+// foreign key — nodes live inside Mindmap.content's JSON blob, not as their own rows —
+// so deleting a node doesn't cascade here automatically; applyMindmapUpdate diffs old
+// vs. new node ids on every content save and cleans up orphaned rows explicitly (see
+// src/lib/mindmap/update-content.ts).
+model Attachment {
+  id        String   @id @default(cuid())
+  mindmapId String
+  nodeId    String
+  name      String
+  url       String
+  size      Int
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  mindmap Mindmap @relation(fields: [mindmapId], references: [id], onDelete: Cascade)
+
+  @@index([mindmapId])
+  @@index([mindmapId, nodeId])
+  @@map("attachments")
 }

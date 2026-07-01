@@ -1,10 +1,20 @@
 import { z } from "zod";
 
+export const taskSchema = z.object({
+  done: z.boolean(),
+  dueDate: z.string().optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
+});
+
 export const nodeDataSchema = z.object({
   label: z.string().max(2000),
   color: z.string().max(20).optional(),
   icon: z.string().max(50).optional(),
   collapsed: z.boolean().optional(),
+  // Markdown-capable free text, rendered via react-markdown in the inspector panel
+  // and presentation mode. Capped for the same DoS-hardening reason array sizes are.
+  note: z.string().max(10_000).optional(),
+  task: taskSchema.optional(),
 });
 
 export const mindmapNodeSchema = z.object({

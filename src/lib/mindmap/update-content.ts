@@ -2,6 +2,7 @@ import type { Mindmap } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { encodeContent, decodeContent } from "@/lib/mindmap/content-codec";
+import { deleteAttachment } from "@/lib/mindmap/attachments";
 import type { MindmapContent } from "@/types/mindmap";
 
 export interface MindmapUpdateInput {
@@ -47,6 +48,25 @@ export async function applyMindmapUpdate(
       updatedAt: new Date(),
     },
   });
+
+  // Attachments aren't foreign-keyed to nodes (nodes live in the JSON blob, not as
+  // rows), so deleting a node client-side doesn't cascade — clean up here, the one
+  // place that has both the old and new node-id sets in hand at exactly the right
+  // moment. Best-effort: an orphaned file left behind on a rare failure here is a
+  // minor storage-cleanliness issue, not a correctness one, so it isn't allowed to
+  // fail the save itself.
+  if (input.content !== undefined) {
+    const oldNodeIds = new Set(decodeContent(current.content).nodes.map((n) => n.id));
+    const newNodeIds = new Set(input.content.nodes.map((n) => n.id));
+    const removedNodeIds = [...oldNodeIds].filter((id) => !newNodeIds.has(id));
+
+    if (removedNodeIds.length > 0) {
+      await prisma.attachment
+        .findMany({ where: { mindmapId: current.id, nodeId: { in: removedNodeIds } } })
+        .then((orphaned) => Promise.all(orphaned.map((a) => deleteAttachment(a))))
+        .catch(() => undefined);
+    }
+  }
 
   return { ok: true, updatedAt: updated.updatedAt.toISOString() };
 }

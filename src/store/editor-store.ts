@@ -3,7 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { applyNodeChanges, applyEdgeChanges } from "@xyflow/react";
 import type { NodeChange, EdgeChange } from "@xyflow/react";
 
-import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
+import type { MindmapNode, MindmapEdge, MindmapNodeData } from "@/types/mindmap";
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
 import { getParentId, getChildIds, getSubtreeIds } from "@/lib/mindmap/tree-utils";
 import { resolveNewNodeColor, resolveNewRootColor } from "@/lib/mindmap/color";
@@ -18,6 +18,9 @@ interface EditorState {
   edges: MindmapEdge[];
   selectedNodeId: string | null;
   editingNodeId: string | null;
+  // Which node's inspector panel (note/task/attachments) is open, if any — a view
+  // toggle like editingNodeId, not content, so it's not part of undo/dirty tracking.
+  inspectorNodeId: string | null;
   // True for a share link with VIEW permission — canvas renders but nothing mutates.
   readOnly: boolean;
 
@@ -44,9 +47,12 @@ interface EditorState {
 
   selectNode: (id: string | null) => void;
   setEditingNode: (id: string | null) => void;
+  setInspectorNode: (id: string | null) => void;
   setTitle: (title: string) => void;
   updateNodeLabel: (id: string, label: string) => void;
   updateNodeColor: (id: string, color: string) => void;
+  updateNodeNote: (id: string, note: string) => void;
+  updateNodeTask: (id: string, task: MindmapNodeData["task"]) => void;
   toggleCollapsed: (id: string) => void;
 
   addChildNode: (parentId: string) => string | null;
@@ -95,6 +101,7 @@ export const useEditorStore = create<EditorState>()(
     edges: [],
     selectedNodeId: null,
     editingNodeId: null,
+    inspectorNodeId: null,
     readOnly: false,
     revision: 0,
     dirty: false,
@@ -110,6 +117,7 @@ export const useEditorStore = create<EditorState>()(
         edges,
         selectedNodeId: null,
         editingNodeId: null,
+        inspectorNodeId: null,
         readOnly,
         revision: 0,
         dirty: false,
@@ -145,6 +153,9 @@ export const useEditorStore = create<EditorState>()(
       if (get().readOnly) return;
       set({ editingNodeId: id });
     },
+    // Not readOnly-guarded — a VIEW-only visitor can still open a node's inspector to
+    // read its note/attachments, the same way toggleCollapsed is allowed for them too.
+    setInspectorNode: (id) => set({ inspectorNodeId: id }),
 
     setTitle: (title) => {
       if (get().readOnly) return;
@@ -174,6 +185,34 @@ export const useEditorStore = create<EditorState>()(
       commitHistory(state.nodes, state.edges);
       set((s) => ({
         nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, color } } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    updateNodeNote: (id, note) => {
+      const state = get();
+      if (state.readOnly) return;
+      const target = state.nodes.find((n) => n.id === id);
+      if (!target || target.data.note === note) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, note } } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    updateNodeTask: (id, task) => {
+      const state = get();
+      if (state.readOnly) return;
+      const target = state.nodes.find((n) => n.id === id);
+      if (!target) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, task } } : n)),
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -278,6 +317,8 @@ export const useEditorStore = create<EditorState>()(
         edges: s.edges.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target)),
         selectedNodeId: s.selectedNodeId && idsToRemove.has(s.selectedNodeId) ? null : s.selectedNodeId,
         editingNodeId: s.editingNodeId && idsToRemove.has(s.editingNodeId) ? null : s.editingNodeId,
+        inspectorNodeId:
+          s.inspectorNodeId && idsToRemove.has(s.inspectorNodeId) ? null : s.inspectorNodeId,
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -355,6 +396,7 @@ export const useEditorStore = create<EditorState>()(
         edges,
         selectedNodeId: null,
         editingNodeId: null,
+        inspectorNodeId: null,
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -372,6 +414,7 @@ export const useEditorStore = create<EditorState>()(
         // editing — drop the reference rather than pointing at a node that's gone.
         selectedNodeId: stillExists(s.selectedNodeId) ? s.selectedNodeId : null,
         editingNodeId: stillExists(s.editingNodeId) ? s.editingNodeId : null,
+        inspectorNodeId: stillExists(s.inspectorNodeId) ? s.inspectorNodeId : null,
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -387,6 +430,7 @@ export const useEditorStore = create<EditorState>()(
         edges: restored.edges,
         selectedNodeId: null,
         editingNodeId: null,
+        inspectorNodeId: null,
         dirty: true,
         revision: state.revision + 1,
       });
@@ -402,6 +446,7 @@ export const useEditorStore = create<EditorState>()(
         edges: restored.edges,
         selectedNodeId: null,
         editingNodeId: null,
+        inspectorNodeId: null,
         dirty: true,
         revision: state.revision + 1,
       });

@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Info, StickyNote, CheckSquare, Square } from "lucide-react";
 
 import type { MindmapNode as MindmapNodeType } from "@/types/mindmap";
 import { useEditorStore } from "@/store/editor-store";
@@ -19,6 +19,8 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const label = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.label ?? "");
   const color = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.color);
   const collapsed = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.collapsed ?? false);
+  const note = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.note);
+  const task = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.task);
   const childCount = useEditorStore((s) => getChildIds(s.edges, id).length);
   const hiddenDescendantCount = useEditorStore((s) =>
     collapsed ? getDescendantIds(s.edges, id).length : 0,
@@ -31,6 +33,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const remoteSelectorColors = useRemoteSelectors(id);
 
   const setEditingNode = useEditorStore((s) => s.setEditingNode);
+  const setInspectorNode = useEditorStore((s) => s.setInspectorNode);
   const updateNodeLabel = useEditorStore((s) => s.updateNodeLabel);
   const toggleCollapsed = useEditorStore((s) => s.toggleCollapsed);
 
@@ -113,6 +116,30 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           </span>
         )}
       </div>
+
+      {(note || task) && (
+        <div className="mt-1.5 flex items-center gap-2 pl-4 text-muted-foreground">
+          {note && <StickyNote className="size-3" aria-label="Has a note" />}
+          {task &&
+            (task.done ? (
+              <CheckSquare className="size-3 text-primary" aria-label="Task done" />
+            ) : (
+              <Square className="size-3" aria-label="Task not done" />
+            ))}
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="absolute -top-3 -right-3 flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100"
+        onClick={(e) => {
+          e.stopPropagation();
+          setInspectorNode(id);
+        }}
+        aria-label="Open details"
+      >
+        <Info className="size-3.5" />
+      </button>
 
       {childCount > 0 && (
         <button

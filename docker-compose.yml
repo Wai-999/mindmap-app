@@ -29,8 +29,14 @@ services:
       DATABASE_URL: postgresql://mindmap:mindmap@db:5432/mindmap
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?set NEXTAUTH_SECRET in a .env file next to this compose file}
+      # Optional — leave unset to run fully solo (see README's "Real-time collaboration").
+      LIVEBLOCKS_SECRET_KEY: ${LIVEBLOCKS_SECRET_KEY:-}
+      ATTACHMENT_STORAGE_PATH: /data/attachments
+    volumes:
+      - attachments-data:/data/attachments
     ports:
       - "3000:3000"
 
 volumes:
   db-data:
+  attachments-data:

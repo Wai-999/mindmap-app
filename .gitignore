@@ -49,6 +49,9 @@ yarn-error.log*
 *.db-journal
 prisma/dev.db*
 
+# local node attachment uploads (see ATTACHMENT_STORAGE_PATH in .env.example)
+/storage/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
