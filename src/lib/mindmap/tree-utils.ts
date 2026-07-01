@@ -38,6 +38,12 @@ export function getRootNode(
   return nodes.find((n) => !edges.some((e) => e.target === n.id)) ?? null;
 }
 
+// A mindmap can hold several independent primary ideas — a forest of trees, not a
+// single tree. This returns all of them (parentless nodes), in `nodes` array order.
+export function getRootNodes(nodes: MindmapNode[], edges: MindmapEdge[]): MindmapNode[] {
+  return nodes.filter((n) => !edges.some((e) => e.target === n.id));
+}
+
 export function isRootNode(edges: MindmapEdge[], nodeId: string): boolean {
   return !edges.some((e) => e.target === nodeId);
 }

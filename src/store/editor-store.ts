@@ -5,8 +5,8 @@ import type { NodeChange, EdgeChange } from "@xyflow/react";
 
 import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
-import { getParentId, getChildIds, getSubtreeIds, isRootNode } from "@/lib/mindmap/tree-utils";
-import { resolveNewNodeColor } from "@/lib/mindmap/color";
+import { getParentId, getChildIds, getSubtreeIds } from "@/lib/mindmap/tree-utils";
+import { resolveNewNodeColor, resolveNewRootColor } from "@/lib/mindmap/color";
 import { useHistoryStore } from "@/store/history-store";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -51,6 +51,9 @@ interface EditorState {
 
   addChildNode: (parentId: string) => string | null;
   addSiblingNode: (nodeId: string) => string | null;
+  // A new independent primary idea — no parent edge. Also the fallback target when
+  // addSiblingNode is called on a root (a root's "sibling" is a new root).
+  addRootNode: () => string | null;
   deleteNodeAndSubtree: (nodeId: string) => void;
   duplicateSubtree: (nodeId: string) => string | null;
   applyLayout: (positions: Record<string, { x: number; y: number }>) => void;
@@ -226,13 +229,42 @@ export const useEditorStore = create<EditorState>()(
 
     addSiblingNode: (nodeId) => {
       const parentId = getParentId(get().edges, nodeId);
-      if (!parentId) return null;
+      if (!parentId) return get().addRootNode();
       return get().addChildNode(parentId);
+    },
+
+    addRootNode: () => {
+      const state = get();
+      if (state.readOnly) return null;
+
+      commitHistory(state.nodes, state.edges);
+
+      // Below-and-left of everything else, so a new primary idea reads as a fresh
+      // start rather than overlapping any existing tree's bounding box.
+      const minX = state.nodes.length > 0 ? Math.min(...state.nodes.map((n) => n.position.x)) : 0;
+      const maxY = state.nodes.length > 0 ? Math.max(...state.nodes.map((n) => n.position.y)) : 0;
+      const id = generateNodeId();
+      const newNode: MindmapNode = {
+        id,
+        type: "mindmapNode",
+        position: { x: minX, y: maxY + 160 },
+        data: { label: "", color: resolveNewRootColor(state.nodes, state.edges) },
+      };
+
+      set((s) => ({
+        nodes: [...s.nodes, newNode],
+        selectedNodeId: id,
+        editingNodeId: id,
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+
+      return id;
     },
 
     deleteNodeAndSubtree: (nodeId) => {
       const state = get();
-      if (state.readOnly || isRootNode(state.edges, nodeId)) return;
+      if (state.readOnly) return;
 
       commitHistory(state.nodes, state.edges);
 

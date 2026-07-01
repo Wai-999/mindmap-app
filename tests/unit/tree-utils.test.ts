@@ -6,6 +6,7 @@ import {
   getDescendantIds,
   getSubtreeIds,
   getRootNode,
+  getRootNodes,
   isRootNode,
   getDepth,
   filterVisible,
@@ -72,6 +73,24 @@ describe("tree-utils", () => {
   it("getRootNode finds the node with no incoming edge", () => {
     expect(getRootNode(nodes, edges)?.id).toBe("root");
     expect(getRootNode([], [])).toBeNull();
+  });
+
+  describe("getRootNodes (forest support)", () => {
+    it("returns an empty array for an empty forest", () => {
+      expect(getRootNodes([], [])).toEqual([]);
+    });
+
+    it("returns a single-element array matching getRootNode for a single-tree mindmap", () => {
+      expect(getRootNodes(nodes, edges).map((n) => n.id)).toEqual(["root"]);
+    });
+
+    it("returns every parentless node when the mindmap has several independent primary ideas", () => {
+      const forestNodes = [...nodes, makeNode("root2"), makeNode("c")];
+      const forestEdges = [...edges, makeEdge("root2", "c")];
+
+      const roots = getRootNodes(forestNodes, forestEdges);
+      expect(roots.map((n) => n.id).sort()).toEqual(["root", "root2"]);
+    });
   });
 
   it("isRootNode is true only for the root", () => {

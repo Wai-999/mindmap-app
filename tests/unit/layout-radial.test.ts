@@ -37,4 +37,57 @@ describe("computeRadialLayout", () => {
   it("returns an empty object for an empty tree", () => {
     expect(computeRadialLayout([], [])).toEqual({});
   });
+
+  describe("forest support (multiple independent primary ideas)", () => {
+    // Two disconnected clusters: root -> a, b -> a1 (as above) and root2 -> c1.
+    const forestNodes = [...nodes, makeNode("root2"), makeNode("c1")];
+    const forestEdges = [...edges, makeEdge("root2", "c1")];
+
+    function distFromOwnRoot(
+      positions: Record<string, { x: number; y: number }>,
+      id: string,
+      rootId: string,
+    ) {
+      return Math.hypot(positions[id].x - positions[rootId].x, positions[id].y - positions[rootId].y);
+    }
+
+    it("lays out every node across all clusters", () => {
+      const positions = computeRadialLayout(forestNodes, forestEdges);
+      for (const node of forestNodes) {
+        expect(positions[node.id]).toBeDefined();
+      }
+    });
+
+    it("keeps each cluster's own root at the same radius from its own center as the solo case", () => {
+      const soloPositions = computeRadialLayout(nodes, edges);
+      const soloRadius = radiusOf(soloPositions, "a"); // distance from root, since root is at the origin
+
+      const positions = computeRadialLayout(forestNodes, forestEdges);
+      expect(distFromOwnRoot(positions, "a", "root")).toBeCloseTo(soloRadius, 5);
+      expect(distFromOwnRoot(positions, "c1", "root2")).toBeCloseTo(soloRadius, 5);
+    });
+
+    it("keeps a cluster's internal relative layout unchanged from the single-cluster case", () => {
+      const soloPositions = computeRadialLayout(nodes, edges);
+      const forestPositions = computeRadialLayout(forestNodes, forestEdges);
+      expect(distFromOwnRoot(forestPositions, "a1", "a")).toBeCloseTo(
+        Math.hypot(soloPositions.a1.x - soloPositions.a.x, soloPositions.a1.y - soloPositions.a.y),
+        5,
+      );
+    });
+
+    it("separates two clusters' centers with no overlap", () => {
+      const soloPositions = computeRadialLayout(nodes, edges);
+      const soloRadius = radiusOf(soloPositions, "a");
+
+      const positions = computeRadialLayout(forestNodes, forestEdges);
+      const centerDistance = Math.hypot(
+        positions.root2.x - positions.root.x,
+        positions.root2.y - positions.root.y,
+      );
+      // Clusters must be far enough apart that their outer rings (radius soloRadius
+      // here) don't visually touch.
+      expect(centerDistance).toBeGreaterThan(2 * soloRadius);
+    });
+  });
 });

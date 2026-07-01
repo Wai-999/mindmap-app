@@ -26,11 +26,16 @@ function parseLines(markdown: string): ParsedLine[] {
   return parsed;
 }
 
-// Indentation-normalized: the first line is always the root regardless of its actual
+// Indentation-normalized: the first line is always depth 0 regardless of its actual
 // indent, and every later line is clamped to at most one level deeper than the line
 // before it — this tolerates inconsistent or partial indentation (common when a list
-// is hand-edited) without ever producing more than one root or an orphaned subtree.
-// Imported content has no meaningful positions, so a tree layout runs immediately.
+// is hand-edited) without ever orphaning a subtree. A later line at literal zero
+// indent always clamps back down to depth 0 (`Math.min(0, previousDepth + 1)` is
+// always 0), so it gets `parentId: null` — i.e. it starts a new, independent primary
+// idea rather than attaching to whatever tree came before it. A mindmap can hold
+// several such roots (see tree-utils.ts's getRootNodes), matching exportToMarkdown's
+// multiple-depth-0-bullets output. Imported content has no meaningful positions, so a
+// tree layout (already forest-aware) runs immediately.
 export function importFromMarkdown(markdown: string): MindmapContent {
   const lines = parseLines(markdown);
   if (lines.length === 0) {

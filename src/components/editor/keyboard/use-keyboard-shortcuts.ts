@@ -52,8 +52,11 @@ export function useKeyboardShortcuts(endpoint: string) {
 
       if (e.key === "Enter") {
         e.preventDefault();
+        // A root's "sibling" is a new primary idea (addSiblingNode falls through to
+        // addRootNode for a parentless node), so this only returns null if selectedId
+        // doesn't resolve to a real node at all — defensive fallback, not the normal path.
         const siblingId = store.addSiblingNode(selectedId);
-        if (!siblingId) store.setEditingNode(selectedId); // root has no sibling — edit it instead
+        if (!siblingId) store.setEditingNode(selectedId);
         return;
       }
 

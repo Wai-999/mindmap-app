@@ -1,5 +1,5 @@
 import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
-import { getChildIds, isRootNode } from "@/lib/mindmap/tree-utils";
+import { getChildIds, getRootNodes, isRootNode } from "@/lib/mindmap/tree-utils";
 import { NODE_COLORS } from "@/lib/mindmap/defaults";
 
 // Shared by editor-store's addChildNode and the Markdown importer (which builds the
@@ -19,4 +19,11 @@ export function resolveNewNodeColor(
     return NODE_COLORS[siblingCount % NODE_COLORS.length];
   }
   return parent.data.color ?? NODE_COLORS[0];
+}
+
+// A new primary idea (root) has no parent to inherit a color from — cycle through the
+// palette by how many roots already exist, separate from resolveNewNodeColor's
+// parent-keyed logic above (roots aren't siblings of anything).
+export function resolveNewRootColor(nodes: MindmapNode[], edges: MindmapEdge[]): string {
+  return NODE_COLORS[getRootNodes(nodes, edges).length % NODE_COLORS.length];
 }

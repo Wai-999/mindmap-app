@@ -1,11 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Plus, GitBranch, Trash2, Undo2, Redo2 } from "lucide-react";
+import { Plus, GitBranch, Trash2, Undo2, Redo2, CirclePlus } from "lucide-react";
 
 import { useEditorStore } from "@/store/editor-store";
 import { useHistoryStore } from "@/store/history-store";
-import { isRootNode } from "@/lib/mindmap/tree-utils";
 import { deleteNodeWithUndo } from "@/lib/mindmap/delete-with-undo";
 import { NodeColorPicker } from "@/components/editor/nodes/node-color-picker";
 import { LayoutMenu } from "@/components/editor/toolbar/layout-menu";
@@ -17,11 +16,9 @@ import { cn } from "@/lib/utils";
 export function FloatingToolbar() {
   const readOnly = useEditorStore((s) => s.readOnly);
   const selectedNodeId = useEditorStore((s) => s.selectedNodeId);
-  const isRoot = useEditorStore((s) =>
-    selectedNodeId ? isRootNode(s.edges, selectedNodeId) : false,
-  );
   const addChildNode = useEditorStore((s) => s.addChildNode);
   const addSiblingNode = useEditorStore((s) => s.addSiblingNode);
+  const addRootNode = useEditorStore((s) => s.addRootNode);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
   const canUndo = useHistoryStore((s) => s.past.length > 0);
@@ -44,17 +41,19 @@ export function FloatingToolbar() {
       <ExportMenu />
       <ImportDialog />
 
+      <Divider />
+
+      <ToolbarButton label="Add primary idea" onClick={() => addRootNode()}>
+        <CirclePlus className="size-4" />
+      </ToolbarButton>
+
       {selectedNodeId && (
         <>
           <Divider />
           <ToolbarButton label="Add child" onClick={() => addChildNode(selectedNodeId)}>
             <Plus className="size-4" />
           </ToolbarButton>
-          <ToolbarButton
-            label="Add sibling"
-            onClick={() => addSiblingNode(selectedNodeId)}
-            disabled={isRoot}
-          >
+          <ToolbarButton label="Add sibling" onClick={() => addSiblingNode(selectedNodeId)}>
             <GitBranch className="size-4" />
           </ToolbarButton>
           <NodeColorPicker nodeId={selectedNodeId} />
@@ -62,7 +61,6 @@ export function FloatingToolbar() {
           <ToolbarButton
             label="Delete"
             onClick={() => deleteNodeWithUndo(selectedNodeId)}
-            disabled={isRoot}
             destructive
           >
             <Trash2 className="size-4" />

@@ -44,4 +44,34 @@ describe("computeTreeLayout", () => {
   it("returns an empty object for an empty tree", () => {
     expect(computeTreeLayout([], [])).toEqual({});
   });
+
+  describe("forest support (multiple independent primary ideas)", () => {
+    // Two disconnected trees: root -> a, b, c (as above) and root2 -> d.
+    const forestNodes = [...nodes, makeNode("root2"), makeNode("d")];
+    const forestEdges = [...edges, makeEdge("root2", "d")];
+
+    it("lays out every node across all trees", () => {
+      const positions = computeTreeLayout(forestNodes, forestEdges, "LR");
+      for (const node of forestNodes) {
+        expect(positions[node.id]).toBeDefined();
+      }
+    });
+
+    it("keeps each tree's own internal relative layout unchanged from the single-tree case", () => {
+      const soloPositions = computeTreeLayout(nodes, edges, "LR");
+      const forestPositions = computeTreeLayout(forestNodes, forestEdges, "LR");
+      // The first tree's depth-axis (x) positions are identical regardless of a second,
+      // unrelated tree being present — only the breadth axis (y) may shift to make room.
+      for (const id of ["root", "a", "b", "c"]) {
+        expect(forestPositions[id].x).toBeCloseTo(soloPositions[id].x);
+      }
+    });
+
+    it("separates unrelated trees along the breadth axis with no overlap", () => {
+      const positions = computeTreeLayout(forestNodes, forestEdges, "LR");
+      const firstTreeYs = ["root", "a", "b", "c"].map((id) => positions[id].y);
+      const secondTreeYs = ["root2", "d"].map((id) => positions[id].y);
+      expect(Math.min(...secondTreeYs)).toBeGreaterThan(Math.max(...firstTreeYs));
+    });
+  });
 });

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import { exportToMarkdown } from "@/lib/export/to-markdown";
 import { importFromMarkdown } from "@/lib/export/from-markdown";
-import { getRootNode, getChildIds } from "@/lib/mindmap/tree-utils";
+import { getRootNode, getRootNodes, getChildIds } from "@/lib/mindmap/tree-utils";
 import type { MindmapContent, MindmapNode, MindmapEdge } from "@/types/mindmap";
 
 function makeNode(id: string, label: string): MindmapNode {
@@ -24,6 +24,15 @@ describe("exportToMarkdown", () => {
 
   it("returns an empty string when there is no root", () => {
     expect(exportToMarkdown({ nodes: [], edges: [] })).toBe("");
+  });
+
+  it("emits each independent primary idea as its own depth-0 bullet run", () => {
+    const content: MindmapContent = {
+      nodes: [makeNode("root", "Root A"), makeNode("a", "Child A1"), makeNode("root2", "Root B")],
+      edges: [makeEdge("root", "a")],
+    };
+
+    expect(exportToMarkdown(content)).toBe("- Root A\n  - Child A1\n- Root B");
   });
 });
 
@@ -51,6 +60,32 @@ describe("importFromMarkdown", () => {
 
   it("throws a clear error when there are no bullet lines", () => {
     expect(() => importFromMarkdown("just plain text, no bullets")).toThrow();
+  });
+
+  it("treats a later literal-zero-indent bullet as a new, independent primary idea", () => {
+    const content = importFromMarkdown("- Root A\n  - Child A1\n- Root B");
+    const roots = getRootNodes(content.nodes, content.edges);
+    expect(roots.map((n) => n.data.label).sort()).toEqual(["Root A", "Root B"]);
+
+    const rootA = roots.find((n) => n.data.label === "Root A")!;
+    expect(getChildIds(content.edges, rootA.id)).toHaveLength(1);
+    const rootB = roots.find((n) => n.data.label === "Root B")!;
+    expect(getChildIds(content.edges, rootB.id)).toHaveLength(0);
+  });
+
+  it("round-trips a multi-root forest: export then re-import preserves the root count", () => {
+    const original: MindmapContent = {
+      nodes: [
+        makeNode("root", "Root A"),
+        makeNode("a", "Child A1"),
+        makeNode("root2", "Root B"),
+        makeNode("b", "Child B1"),
+      ],
+      edges: [makeEdge("root", "a"), makeEdge("root2", "b")],
+    };
+
+    const reimported = importFromMarkdown(exportToMarkdown(original));
+    expect(getRootNodes(reimported.nodes, reimported.edges)).toHaveLength(2);
   });
 
   it("round-trips: export then re-import reproduces the same labels and structure", () => {
