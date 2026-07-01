@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SaveStatusIndicator } from "@/components/editor/save-status-indicator";
 import { ShareDialog } from "@/components/editor/share/share-dialog";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 export function EditorHeader() {
   const mindmapId = useEditorStore((s) => s.mindmapId);
@@ -63,6 +64,7 @@ export function EditorHeader() {
       </div>
       <div className="flex items-center gap-3">
         <SaveStatusIndicator />
+        <ThemeToggle />
         {mindmapId && <ShareDialog mindmapId={mindmapId} />}
       </div>
     </header>

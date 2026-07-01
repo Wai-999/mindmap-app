@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Brain, Eye, Pencil } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import type { SharePermission } from "@/types/share";
 
 export function SharedViewBanner({
@@ -19,10 +20,13 @@ export function SharedViewBanner({
         </Link>
         <span className="truncate text-sm font-medium">{title}</span>
       </div>
-      <Badge variant={permission === "EDIT" ? "default" : "secondary"} className="gap-1 shrink-0">
-        {permission === "EDIT" ? <Pencil className="size-3" /> : <Eye className="size-3" />}
-        {permission === "EDIT" ? "Can edit" : "View only"}
-      </Badge>
+      <div className="flex shrink-0 items-center gap-3">
+        <ThemeToggle />
+        <Badge variant={permission === "EDIT" ? "default" : "secondary"} className="gap-1">
+          {permission === "EDIT" ? <Pencil className="size-3" /> : <Eye className="size-3" />}
+          {permission === "EDIT" ? "Can edit" : "View only"}
+        </Badge>
+      </div>
     </header>
   );
 }
