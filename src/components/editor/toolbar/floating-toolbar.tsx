@@ -9,6 +9,8 @@ import { isRootNode } from "@/lib/mindmap/tree-utils";
 import { deleteNodeWithUndo } from "@/lib/mindmap/delete-with-undo";
 import { NodeColorPicker } from "@/components/editor/nodes/node-color-picker";
 import { LayoutMenu } from "@/components/editor/toolbar/layout-menu";
+import { ExportMenu } from "@/components/editor/export/export-menu";
+import { ImportDialog } from "@/components/editor/export/import-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +41,8 @@ export function FloatingToolbar() {
       <Divider />
 
       <LayoutMenu />
+      <ExportMenu />
+      <ImportDialog />
 
       {selectedNodeId && (
         <>

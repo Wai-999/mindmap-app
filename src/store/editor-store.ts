@@ -6,7 +6,7 @@ import type { NodeChange, EdgeChange } from "@xyflow/react";
 import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
 import { getParentId, getChildIds, getSubtreeIds, isRootNode } from "@/lib/mindmap/tree-utils";
-import { NODE_COLORS } from "@/lib/mindmap/defaults";
+import { resolveNewNodeColor } from "@/lib/mindmap/color";
 import { useHistoryStore } from "@/store/history-store";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -54,6 +54,10 @@ interface EditorState {
   deleteNodeAndSubtree: (nodeId: string) => void;
   duplicateSubtree: (nodeId: string) => string | null;
   applyLayout: (positions: Record<string, { x: number; y: number }>) => void;
+  // Wholesale swap for import — unlike loadMindmap, this is a real edit: it commits
+  // history (so import is one Undo away) and marks the canvas dirty for autosave,
+  // rather than treating the new content as "just synced from the server."
+  replaceContent: (nodes: MindmapNode[], edges: MindmapEdge[]) => void;
 
   undo: () => void;
   redo: () => void;
@@ -61,23 +65,6 @@ interface EditorState {
   markSaving: () => void;
   markSaved: (updatedAt: string, savedRevision: number) => void;
   markSaveError: () => void;
-}
-
-function resolveNewNodeColor(
-  nodes: MindmapNode[],
-  edges: MindmapEdge[],
-  parentId: string,
-): string {
-  const parent = nodes.find((n) => n.id === parentId);
-  if (!parent) return NODE_COLORS[0];
-
-  // Children of the root each start a new branch color; deeper descendants inherit
-  // their branch's color so a whole subtree reads as one color-coded limb.
-  if (isRootNode(edges, parentId)) {
-    const siblingCount = getChildIds(edges, parentId).length;
-    return NODE_COLORS[siblingCount % NODE_COLORS.length];
-  }
-  return parent.data.color ?? NODE_COLORS[0];
 }
 
 function computeChildPosition(parent: MindmapNode, existingChildCount: number) {
@@ -317,6 +304,21 @@ export const useEditorStore = create<EditorState>()(
 
       set((s) => ({
         nodes: s.nodes.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    replaceContent: (nodes, edges) => {
+      const state = get();
+      if (state.readOnly) return;
+      commitHistory(state.nodes, state.edges);
+
+      set((s) => ({
+        nodes,
+        edges,
+        selectedNodeId: null,
+        editingNodeId: null,
         dirty: true,
         revision: s.revision + 1,
       }));
