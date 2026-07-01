@@ -1,8 +1,8 @@
 // Electron main process. Plain CommonJS on purpose — this is glue code (spawn the
 // existing Next.js standalone server, load it in a window), not app logic, so it
 // doesn't need the TypeScript/React toolchain the rest of the app uses.
-const { app, BrowserWindow, dialog } = require("electron");
-const { spawn, execFileSync } = require("node:child_process");
+const { app, BrowserWindow, dialog, utilityProcess } = require("electron");
+const { execFileSync } = require("node:child_process");
 const net = require("node:net");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -130,19 +130,17 @@ async function startServer(userDataDir) {
   const port = await getFreePort();
   const userEnv = parseEnvFile(envPath);
 
-  // process.execPath is the bundled Electron binary, not a system Node install (the
-  // target Mac isn't guaranteed to have Node at all) — ELECTRON_RUN_AS_NODE makes it
-  // behave as a plain `node <script>` invocation instead of launching another GUI.
-  // Server output goes to a log file (truncated each launch, not appended — this is
-  // a long-lived personal app, an ever-growing log would be a slow disk-space leak)
-  // rather than being discarded, so a startup problem is diagnosable after the fact.
-  const serverLog = fs.openSync(path.join(userDataDir, "server.log"), "w");
-
-  const child = spawn(process.execPath, [serverPath], {
+  // utilityProcess.fork (not child_process.spawn of the Electron binary with
+  // ELECTRON_RUN_AS_NODE) is Electron's supported way to run a Node script inside a
+  // packaged app: it uses the bundled Node runtime (the target Mac isn't guaranteed
+  // to have Node at all) and, unlike re-exec'ing the .app binary, macOS doesn't
+  // surface it in the Dock as a second app named "exec".
+  const child = utilityProcess.fork(serverPath, [], {
+    serviceName: "mindmap-server",
+    stdio: ["ignore", "pipe", "pipe"],
     env: {
       ...process.env,
       ...userEnv,
-      ELECTRON_RUN_AS_NODE: "1",
       PORT: String(port),
       HOSTNAME: "127.0.0.1",
       DATABASE_URL: `file:${dbPath}`,
@@ -158,8 +156,16 @@ async function startServer(userDataDir) {
       ATTACHMENT_STORAGE_PATH: path.join(userDataDir, "attachments"),
       NODE_ENV: "production",
     },
-    stdio: ["ignore", serverLog, serverLog],
   });
+
+  // Server output goes to a log file (truncated each launch, not appended — this is
+  // a long-lived personal app, an ever-growing log would be a slow disk-space leak)
+  // rather than being discarded, so a startup problem is diagnosable after the fact.
+  // `end: false` on both pipes: whichever stream closes first must not end the
+  // shared file stream out from under the other.
+  const serverLog = fs.createWriteStream(path.join(userDataDir, "server.log"));
+  child.stdout.pipe(serverLog, { end: false });
+  child.stderr.pipe(serverLog, { end: false });
 
   serverProcess = child;
   return port;
