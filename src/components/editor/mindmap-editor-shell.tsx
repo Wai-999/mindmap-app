@@ -2,9 +2,11 @@
 
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { ReactFlowProvider } from "@xyflow/react";
 
 import { useEditorStore } from "@/store/editor-store";
 import { initAutosave } from "@/store/autosave";
+import { useKeyboardShortcuts } from "@/components/editor/keyboard/use-keyboard-shortcuts";
 import { EditorHeader } from "@/components/editor/editor-header";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
@@ -51,13 +53,17 @@ export function MindmapEditorShell({ mindmap }: MindmapEditorShellProps) {
     return () => window.removeEventListener("mindmap:conflict", handleConflict);
   }, []);
 
+  useKeyboardShortcuts(mindmap.id);
+
   return (
     <div className="flex h-svh flex-col">
       <EditorHeader />
-      <div className="relative flex-1">
-        <MindmapCanvas />
-        <FloatingToolbar />
-      </div>
+      <ReactFlowProvider>
+        <div className="relative flex-1">
+          <MindmapCanvas />
+          <FloatingToolbar />
+        </div>
+      </ReactFlowProvider>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
 import { getParentId, getChildIds, getSubtreeIds, isRootNode } from "@/lib/mindmap/tree-utils";
 import { NODE_COLORS } from "@/lib/mindmap/defaults";
+import { useHistoryStore } from "@/store/history-store";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -36,6 +37,7 @@ interface EditorState {
 
   onNodesChange: (changes: NodeChange<MindmapNode>[]) => void;
   onEdgesChange: (changes: EdgeChange<MindmapEdge>[]) => void;
+  commitBeforeDrag: () => void;
 
   selectNode: (id: string | null) => void;
   setEditingNode: (id: string | null) => void;
@@ -47,6 +49,11 @@ interface EditorState {
   addChildNode: (parentId: string) => string | null;
   addSiblingNode: (nodeId: string) => string | null;
   deleteNodeAndSubtree: (nodeId: string) => void;
+  duplicateSubtree: (nodeId: string) => string | null;
+  applyLayout: (positions: Record<string, { x: number; y: number }>) => void;
+
+  undo: () => void;
+  redo: () => void;
 
   markSaving: () => void;
   markSaved: (updatedAt: string, savedRevision: number) => void;
@@ -79,6 +86,10 @@ function computeChildPosition(parent: MindmapNode, existingChildCount: number) {
   };
 }
 
+function commitHistory(nodes: MindmapNode[], edges: MindmapEdge[]) {
+  useHistoryStore.getState().commit({ nodes, edges });
+}
+
 export const useEditorStore = create<EditorState>()(
   subscribeWithSelector((set, get) => ({
     mindmapId: null,
@@ -92,7 +103,8 @@ export const useEditorStore = create<EditorState>()(
     saveStatus: "idle",
     lastSyncedUpdatedAt: null,
 
-    loadMindmap: ({ id, title, nodes, edges, updatedAt }) =>
+    loadMindmap: ({ id, title, nodes, edges, updatedAt }) => {
+      useHistoryStore.getState().reset();
       set({
         mindmapId: id,
         title,
@@ -104,7 +116,8 @@ export const useEditorStore = create<EditorState>()(
         dirty: false,
         saveStatus: "idle",
         lastSyncedUpdatedAt: updatedAt,
-      }),
+      });
+    },
 
     onNodesChange: (changes) =>
       set((s) => {
@@ -121,25 +134,47 @@ export const useEditorStore = create<EditorState>()(
     onEdgesChange: (changes) =>
       set((s) => ({ edges: applyEdgeChanges(changes, s.edges) })),
 
+    // Called from onNodeDragStart — one history entry per whole drag gesture, not one
+    // per position-change event fired while the mouse moves.
+    commitBeforeDrag: () => {
+      const state = get();
+      commitHistory(state.nodes, state.edges);
+    },
+
     selectNode: (id) => set({ selectedNodeId: id }),
     setEditingNode: (id) => set({ editingNodeId: id }),
 
     setTitle: (title) => set((s) => ({ title, dirty: true, revision: s.revision + 1 })),
 
-    updateNodeLabel: (id, label) =>
+    updateNodeLabel: (id, label) => {
+      const state = get();
+      const target = state.nodes.find((n) => n.id === id);
+      if (!target || target.data.label === label) return;
+
+      commitHistory(state.nodes, state.edges);
       set((s) => ({
         nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, label } } : n)),
         dirty: true,
         revision: s.revision + 1,
-      })),
+      }));
+    },
 
-    updateNodeColor: (id, color) =>
+    updateNodeColor: (id, color) => {
+      const state = get();
+      const target = state.nodes.find((n) => n.id === id);
+      if (!target || target.data.color === color) return;
+
+      commitHistory(state.nodes, state.edges);
       set((s) => ({
         nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, color } } : n)),
         dirty: true,
         revision: s.revision + 1,
-      })),
+      }));
+    },
 
+    // Not committed to undo history — collapsing/expanding is a view convenience, not
+    // a content edit, and undo-ing it when the user expected their last edit to revert
+    // would be surprising.
     toggleCollapsed: (id) =>
       set((s) => ({
         nodes: s.nodes.map((n) =>
@@ -153,6 +188,8 @@ export const useEditorStore = create<EditorState>()(
       const state = get();
       const parent = state.nodes.find((n) => n.id === parentId);
       if (!parent) return null;
+
+      commitHistory(state.nodes, state.edges);
 
       const siblingCount = getChildIds(state.edges, parentId).length;
       const id = generateNodeId();
@@ -194,6 +231,8 @@ export const useEditorStore = create<EditorState>()(
       const state = get();
       if (isRootNode(state.edges, nodeId)) return;
 
+      commitHistory(state.nodes, state.edges);
+
       const idsToRemove = new Set(getSubtreeIds(state.edges, nodeId));
       set((s) => ({
         nodes: s.nodes.filter((n) => !idsToRemove.has(n.id)),
@@ -203,6 +242,94 @@ export const useEditorStore = create<EditorState>()(
         dirty: true,
         revision: s.revision + 1,
       }));
+    },
+
+    duplicateSubtree: (nodeId) => {
+      const state = get();
+      const parentId = getParentId(state.edges, nodeId);
+      if (!parentId) return null; // duplicating the root as a "sibling" has no parent to attach to
+
+      commitHistory(state.nodes, state.edges);
+
+      const subtreeIds = getSubtreeIds(state.edges, nodeId);
+      const idMap = new Map<string, string>(subtreeIds.map((oldId) => [oldId, generateNodeId()]));
+      const yOffset = 60;
+
+      const clonedNodes: MindmapNode[] = subtreeIds.map((oldId) => {
+        const original = state.nodes.find((n) => n.id === oldId)!;
+        return {
+          ...original,
+          id: idMap.get(oldId)!,
+          position: { x: original.position.x, y: original.position.y + yOffset },
+          data: { ...original.data },
+        };
+      });
+
+      const clonedEdges: MindmapEdge[] = state.edges
+        .filter((e) => idMap.has(e.source) && idMap.has(e.target))
+        .map((e) => ({
+          id: generateEdgeId(idMap.get(e.source)!, idMap.get(e.target)!),
+          type: "mindmapEdge",
+          source: idMap.get(e.source)!,
+          target: idMap.get(e.target)!,
+        }));
+
+      const rootCloneId = idMap.get(nodeId)!;
+      const connectingEdge: MindmapEdge = {
+        id: generateEdgeId(parentId, rootCloneId),
+        type: "mindmapEdge",
+        source: parentId,
+        target: rootCloneId,
+      };
+
+      set((s) => ({
+        nodes: [...s.nodes, ...clonedNodes],
+        edges: [...s.edges, ...clonedEdges, connectingEdge],
+        selectedNodeId: rootCloneId,
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+
+      return rootCloneId;
+    },
+
+    applyLayout: (positions) => {
+      const state = get();
+      commitHistory(state.nodes, state.edges);
+
+      set((s) => ({
+        nodes: s.nodes.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    undo: () => {
+      const state = get();
+      const restored = useHistoryStore.getState().undo({ nodes: state.nodes, edges: state.edges });
+      if (!restored) return;
+      set({
+        nodes: restored.nodes,
+        edges: restored.edges,
+        selectedNodeId: null,
+        editingNodeId: null,
+        dirty: true,
+        revision: state.revision + 1,
+      });
+    },
+
+    redo: () => {
+      const state = get();
+      const restored = useHistoryStore.getState().redo({ nodes: state.nodes, edges: state.edges });
+      if (!restored) return;
+      set({
+        nodes: restored.nodes,
+        edges: restored.edges,
+        selectedNodeId: null,
+        editingNodeId: null,
+        dirty: true,
+        revision: state.revision + 1,
+      });
     },
 
     markSaving: () => set({ saveStatus: "saving" }),

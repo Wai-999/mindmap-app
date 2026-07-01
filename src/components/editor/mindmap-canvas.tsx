@@ -20,6 +20,7 @@ export function MindmapCanvas() {
   const onEdgesChange = useEditorStore((s) => s.onEdgesChange);
   const selectNode = useEditorStore((s) => s.selectNode);
   const setEditingNode = useEditorStore((s) => s.setEditingNode);
+  const commitBeforeDrag = useEditorStore((s) => s.commitBeforeDrag);
 
   const { nodes: visibleNodes, edges: visibleEdges } = useMemo(() => {
     const hidden = getHiddenIds(nodes, edges);
@@ -49,6 +50,7 @@ export function MindmapCanvas() {
       onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
       onNodeDoubleClick={handleNodeDoubleClick}
+      onNodeDragStart={commitBeforeDrag}
       onPaneClick={() => selectNode(null)}
       deleteKeyCode={null}
       nodesConnectable={false}
