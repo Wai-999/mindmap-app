@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, LayoutGrid, AlignLeft } from "lucide-react";
 
 import { useEditorStore } from "@/store/editor-store";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,15 @@ import { Input } from "@/components/ui/input";
 import { SaveStatusIndicator } from "@/components/editor/save-status-indicator";
 import { ShareDialog } from "@/components/editor/share/share-dialog";
 import { PresenceAvatars } from "@/components/editor/collab/presence-avatars";
+import { PresentButton } from "@/components/editor/presentation/present-button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 
-export function EditorHeader() {
+interface EditorHeaderProps {
+  viewMode: "canvas" | "outline";
+  onToggleViewMode: () => void;
+}
+
+export function EditorHeader({ viewMode, onToggleViewMode }: EditorHeaderProps) {
   const mindmapId = useEditorStore((s) => s.mindmapId);
   const title = useEditorStore((s) => s.title);
   const setTitle = useEditorStore((s) => s.setTitle);
@@ -65,6 +71,17 @@ export function EditorHeader() {
       </div>
       <div className="flex items-center gap-3">
         <PresenceAvatars />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-9"
+          onClick={onToggleViewMode}
+          aria-label={viewMode === "canvas" ? "Switch to outline view" : "Switch to canvas view"}
+          title={viewMode === "canvas" ? "Switch to outline view" : "Switch to canvas view"}
+        >
+          {viewMode === "canvas" ? <AlignLeft className="size-4" /> : <LayoutGrid className="size-4" />}
+        </Button>
+        {mindmapId && <PresentButton endpoint={`/api/mindmaps/${mindmapId}`} />}
         <SaveStatusIndicator />
         <ThemeToggle />
         {mindmapId && <ShareDialog mindmapId={mindmapId} />}

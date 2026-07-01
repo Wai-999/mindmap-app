@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ReactFlowProvider } from "@xyflow/react";
 
@@ -11,6 +11,7 @@ import { EditorHeader } from "@/components/editor/editor-header";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
 import { NodeInspectorPanel } from "@/components/editor/inspector/node-inspector-panel";
+import { OutlineView } from "@/components/editor/outline/outline-view";
 import { LiveblocksRoomProvider } from "@/components/editor/collab/liveblocks-room-provider";
 import { mindmapRoomId } from "@/lib/liveblocks/room-id";
 import type { MindmapContent } from "@/types/mindmap";
@@ -64,14 +65,28 @@ export function MindmapEditorShell({
 
   useKeyboardShortcuts(`/api/mindmaps/${mindmap.id}`);
 
+  // Local, not store state — nothing outside this shell needs to know which view is
+  // showing. ReactFlowProvider stays mounted either way so canvas viewport/zoom state
+  // survives toggling back and forth.
+  const [viewMode, setViewMode] = useState<"canvas" | "outline">("canvas");
+
   const body = (
     <div className="flex h-svh flex-col">
-      <EditorHeader />
+      <EditorHeader
+        viewMode={viewMode}
+        onToggleViewMode={() => setViewMode((v) => (v === "canvas" ? "outline" : "canvas"))}
+      />
       <ReactFlowProvider>
         <div className="relative flex-1">
-          <MindmapCanvas />
-          <FloatingToolbar />
-          <NodeInspectorPanel endpoint={`/api/mindmaps/${mindmap.id}`} />
+          {viewMode === "canvas" ? (
+            <>
+              <MindmapCanvas />
+              <FloatingToolbar />
+              <NodeInspectorPanel endpoint={`/api/mindmaps/${mindmap.id}`} />
+            </>
+          ) : (
+            <OutlineView />
+          )}
         </div>
       </ReactFlowProvider>
     </div>

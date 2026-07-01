@@ -76,7 +76,7 @@ export function SharedMindmapViewer({
 
   const body = (
     <div className="flex h-svh flex-col">
-      <SharedViewBanner title={mindmap.title} permission={permission} />
+      <SharedViewBanner title={mindmap.title} permission={permission} endpoint={endpoint} />
       <ReactFlowProvider>
         <div className="relative flex-1">
           <MindmapCanvas />

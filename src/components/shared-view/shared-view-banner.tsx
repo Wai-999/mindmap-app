@@ -3,15 +3,18 @@ import { Brain, Eye, Pencil } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { SaveStatusIndicator } from "@/components/editor/save-status-indicator";
+import { PresentButton } from "@/components/editor/presentation/present-button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import type { SharePermission } from "@/types/share";
 
 export function SharedViewBanner({
   title,
   permission,
+  endpoint,
 }: {
   title: string;
   permission: SharePermission;
+  endpoint: string;
 }) {
   return (
     <header className="bg-background flex h-14 shrink-0 items-center justify-between border-b px-3">
@@ -23,6 +26,7 @@ export function SharedViewBanner({
       </div>
       <div className="flex shrink-0 items-center gap-3">
         {permission === "EDIT" && <SaveStatusIndicator />}
+        <PresentButton endpoint={endpoint} />
         <ThemeToggle />
         <Badge variant={permission === "EDIT" ? "default" : "secondary"} className="gap-1">
           {permission === "EDIT" ? <Pencil className="size-3" /> : <Eye className="size-3" />}

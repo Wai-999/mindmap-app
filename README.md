@@ -17,6 +17,9 @@ links. Built full-stack with Next.js.
 - Shareable links with `VIEW` or `EDIT` permission, no login required to open one
 - Optional real-time collaboration (see below) — live co-editing on top of a share link or your own
   account, when the deployment has Liveblocks configured
+- Per-node notes (Markdown), tasks (done/due date/priority), and file attachments, in a details
+  panel opened from each node
+- Full-screen presentation mode and an alternate outline (list) view of the same content
 - Dashboard with thumbnails, rename, duplicate, delete
 - Export to PNG, JSON, and Markdown; import JSON or Markdown back in
 - Dark mode
@@ -162,6 +165,14 @@ change.
 - **Thumbnails are inline base64**, capped in size, stored directly on the `Mindmap` row — there's
   no separate object storage. Fine at this scale; would need to move to blob storage (S3/R2) if
   thumbnails grow larger or the dataset gets large.
+- **Attachment storage is local-filesystem by default** (`ATTACHMENT_STORAGE_PATH`), same
+  single-instance caveat as SQLite — swap in an S3-compatible adapter (`src/lib/storage.ts`) for a
+  multi-instance deployment. The Docker Compose file mounts a dedicated `attachments-data` volume.
+- **Only tree/radial auto-layout and a presentation/outline view are supported** — org-chart,
+  timeline, and fishbone diagram layouts are a deliberate scope cut for this round, not an
+  oversight, and would be new layout algorithms alongside `layout-tree.ts`/`layout-radial.ts`.
+- **Google Docs import isn't supported** — it would need Google OAuth + Drive API integration, a
+  separate initiative from the JSON/Markdown import already in place.
 
 ## Roadmap
 
@@ -176,8 +187,8 @@ change.
 - [x] Phase 8 — Deployment artifacts & docs
 - [x] Phase 9 — Forest model (multiple primary ideas per mindmap)
 - [x] Phase 10 — Liveblocks foundation (rooms, auth, opt-in switch)
-- [ ] Phase 11 — Liveblocks storage sync + presence UI
-- [ ] Phase 12 — Content richness (notes, tasks, attachments)
-- [ ] Phase 13 — Views (presentation mode & outline view)
+- [x] Phase 11 — Liveblocks storage sync + presence UI
+- [x] Phase 12 — Content richness (notes, tasks, attachments)
+- [x] Phase 13 — Views (presentation mode & outline view)
 - [ ] Phase 14 — Export/import expansion (PDF, DOCX, PPTX)
 - [ ] Phase 15 — Organization (folders, tags, search, version history)
