@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { resolveShareAccess } from "@/lib/permissions";
 import { decodeContent } from "@/lib/mindmap/content-codec";
+import { isLiveblocksConfigured } from "@/lib/liveblocks/config";
 import { SharedMindmapViewer } from "@/components/shared-view/shared-mindmap-viewer";
 
 interface SharedPageProps {
@@ -32,6 +33,7 @@ export default async function SharedPage({ params }: SharedPageProps) {
         content: decodeContent(result.mindmap.content),
         updatedAt: result.mindmap.updatedAt.toISOString(),
       }}
+      liveblocksEnabled={isLiveblocksConfigured()}
     />
   );
 }

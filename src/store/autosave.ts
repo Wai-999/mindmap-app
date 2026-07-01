@@ -1,5 +1,6 @@
 import { useEditorStore } from "@/store/editor-store";
 import { captureThumbnail } from "@/lib/mindmap/capture-thumbnail";
+import { roomActiveRef, isElectedSaverRef } from "@/lib/liveblocks/collab-state";
 import type { MindmapContent } from "@/types/mindmap";
 
 const DEBOUNCE_MS = 800;
@@ -14,10 +15,26 @@ export interface ConflictDetail {
 // public share-link route (/api/shared/[token]) when editing through a shared link.
 // includeThumbnail is skipped on the unload/visibility-change flush path, where the
 // priority is getting the content save out before the page disappears, not spending
-// extra time rasterizing a preview image.
-async function flush(endpoint: string, includeThumbnail = true) {
+// extra time rasterizing a preview image. isRetry is set only by the 409-conflict
+// retry-once path below — never by a normal caller.
+async function flush(endpoint: string, includeThumbnail = true, isRetry = false) {
   const state = useEditorStore.getState();
   if (!state.dirty || state.saveStatus === "saving") return;
+
+  // While a Liveblocks room is live, only the elected saver actually PATCHes the DB —
+  // everyone else already has every edit via Storage sync, so their UI is never stale,
+  // they just don't independently write (see lib/liveblocks/elect-saver.ts). Solo mode
+  // (roomActiveRef.current === false) is completely unaffected: isElectedSaverRef
+  // defaults to "always true" so this check is a no-op then.
+  //
+  // Still clear this tab's own dirty flag before returning — otherwise a non-elected
+  // tab's save-status indicator gets stuck on "Unsaved changes" forever, even once the
+  // elected saver has actually persisted the exact same content (a real bug caught by
+  // testing against two genuinely connected clients, not just mocks).
+  if (roomActiveRef.current && !isElectedSaverRef.current() && !isRetry) {
+    useEditorStore.setState({ dirty: false, saveStatus: "saved" });
+    return;
+  }
 
   const revisionAtFlushStart = state.revision;
   const content: MindmapContent = { nodes: state.nodes, edges: state.edges };
@@ -41,6 +58,19 @@ async function flush(endpoint: string, includeThumbnail = true) {
 
     if (res.status === 409) {
       const body = (await res.json().catch(() => null)) as ConflictDetail | null;
+
+      // While a room is live, this client's content is already the CRDT-merged result
+      // everyone in the room agrees on — a 409 here means some *other*, non-room
+      // writer's save raced with ours, not a real edit conflict with what's on screen.
+      // Retrying once against the server's own updatedAt is correct (not a silent
+      // data-loss risk) specifically because the content being saved already reflects
+      // every room member's edits, unlike the conflicting writer's content.
+      if (roomActiveRef.current && !isRetry && body) {
+        useEditorStore.setState({ lastSyncedUpdatedAt: body.updatedAt });
+        await flush(endpoint, includeThumbnail, true);
+        return;
+      }
+
       useEditorStore.getState().markSaveError();
       if (body) {
         window.dispatchEvent(new CustomEvent<ConflictDetail>("mindmap:conflict", { detail: body }));

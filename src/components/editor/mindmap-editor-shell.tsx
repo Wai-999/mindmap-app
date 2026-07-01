@@ -10,6 +10,8 @@ import { useKeyboardShortcuts } from "@/components/editor/keyboard/use-keyboard-
 import { EditorHeader } from "@/components/editor/editor-header";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
+import { LiveblocksRoomProvider } from "@/components/editor/collab/liveblocks-room-provider";
+import { mindmapRoomId } from "@/lib/liveblocks/room-id";
 import type { MindmapContent } from "@/types/mindmap";
 
 interface MindmapEditorShellProps {
@@ -19,9 +21,15 @@ interface MindmapEditorShellProps {
     content: MindmapContent;
     updatedAt: string;
   };
+  liveblocksEnabled: boolean;
+  userName: string;
 }
 
-export function MindmapEditorShell({ mindmap }: MindmapEditorShellProps) {
+export function MindmapEditorShell({
+  mindmap,
+  liveblocksEnabled,
+  userName,
+}: MindmapEditorShellProps) {
   const loadMindmap = useEditorStore((s) => s.loadMindmap);
 
   useEffect(() => {
@@ -55,7 +63,7 @@ export function MindmapEditorShell({ mindmap }: MindmapEditorShellProps) {
 
   useKeyboardShortcuts(`/api/mindmaps/${mindmap.id}`);
 
-  return (
+  const body = (
     <div className="flex h-svh flex-col">
       <EditorHeader />
       <ReactFlowProvider>
@@ -65,5 +73,13 @@ export function MindmapEditorShell({ mindmap }: MindmapEditorShellProps) {
         </div>
       </ReactFlowProvider>
     </div>
+  );
+
+  if (!liveblocksEnabled) return body;
+
+  return (
+    <LiveblocksRoomProvider roomId={mindmapRoomId(mindmap.id)} userName={userName}>
+      {body}
+    </LiveblocksRoomProvider>
   );
 }

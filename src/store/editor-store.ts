@@ -61,6 +61,10 @@ interface EditorState {
   // history (so import is one Undo away) and marks the canvas dirty for autosave,
   // rather than treating the new content as "just synced from the server."
   replaceContent: (nodes: MindmapNode[], edges: MindmapEdge[]) => void;
+  // Wholesale swap from a remote collaborator's edit (via the Liveblocks bridge).
+  // Deliberately does NOT commit history, unlike replaceContent — a local Cmd+Z should
+  // only ever undo this browser's own actions, never a peer's edit that just arrived.
+  applyRemoteContent: (nodes: MindmapNode[], edges: MindmapEdge[]) => void;
 
   undo: () => void;
   redo: () => void;
@@ -351,6 +355,23 @@ export const useEditorStore = create<EditorState>()(
         edges,
         selectedNodeId: null,
         editingNodeId: null,
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    applyRemoteContent: (nodes, edges) => {
+      const state = get();
+      if (state.readOnly) return;
+
+      const stillExists = (id: string | null) => id !== null && nodes.some((n) => n.id === id);
+      set((s) => ({
+        nodes,
+        edges,
+        // A remote edit may have deleted whatever this tab had selected/open for
+        // editing — drop the reference rather than pointing at a node that's gone.
+        selectedNodeId: stillExists(s.selectedNodeId) ? s.selectedNodeId : null,
+        editingNodeId: stillExists(s.editingNodeId) ? s.editingNodeId : null,
         dirty: true,
         revision: s.revision + 1,
       }));

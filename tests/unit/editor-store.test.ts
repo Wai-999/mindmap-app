@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
 import { useEditorStore } from "@/store/editor-store";
+import { useHistoryStore } from "@/store/history-store";
 import { getRootNodes, isRootNode } from "@/lib/mindmap/tree-utils";
 import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
 
@@ -90,5 +91,53 @@ describe("editor-store forest support", () => {
 
     const state = useEditorStore.getState();
     expect(state.nodes.map((n) => n.id).sort()).toEqual(["b", "root2"]);
+  });
+});
+
+describe("editor-store applyRemoteContent (Liveblocks bridge)", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+    useHistoryStore.getState().reset();
+  });
+
+  it("updates nodes/edges and marks dirty, without committing undo history", () => {
+    useEditorStore.getState().selectNode("root");
+    const newNodes = [makeNode("root"), makeNode("a")];
+    const newEdges = [makeEdge("root", "a")];
+
+    useEditorStore.getState().applyRemoteContent(newNodes, newEdges);
+
+    const state = useEditorStore.getState();
+    expect(state.nodes).toEqual(newNodes);
+    expect(state.edges).toEqual(newEdges);
+    expect(state.dirty).toBe(true);
+    // A local Cmd+Z must never undo a remote peer's edit — only this tab's own
+    // actions, which is why this differs from replaceContent.
+    expect(useHistoryStore.getState().past).toEqual([]);
+  });
+
+  it("drops a selected/editing node reference that the remote change removed", () => {
+    useEditorStore.getState().selectNode("root");
+    useEditorStore.getState().setEditingNode("root");
+
+    // Remote change removes "root" entirely (e.g. another user deleted it).
+    useEditorStore.getState().applyRemoteContent([makeNode("other")], []);
+
+    const state = useEditorStore.getState();
+    expect(state.selectedNodeId).toBeNull();
+    expect(state.editingNodeId).toBeNull();
+  });
+
+  it("keeps a selected/editing node reference that still exists after the remote change", () => {
+    useEditorStore.getState().selectNode("root");
+    useEditorStore.getState().applyRemoteContent([makeNode("root"), makeNode("a")], []);
+
+    expect(useEditorStore.getState().selectedNodeId).toBe("root");
+  });
+
+  it("does nothing when read-only", () => {
+    load([makeNode("root")], [], true);
+    useEditorStore.getState().applyRemoteContent([makeNode("root"), makeNode("a")], []);
+    expect(useEditorStore.getState().nodes).toHaveLength(1);
   });
 });

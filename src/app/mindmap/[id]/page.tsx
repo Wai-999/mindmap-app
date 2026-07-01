@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getOwnedMindmap } from "@/lib/permissions";
 import { decodeContent } from "@/lib/mindmap/content-codec";
+import { isLiveblocksConfigured } from "@/lib/liveblocks/config";
 import { MindmapEditorShell } from "@/components/editor/mindmap-editor-shell";
 
 interface MindmapPageProps {
@@ -25,6 +26,8 @@ export default async function MindmapPage({ params }: MindmapPageProps) {
         content: decodeContent(mindmap.content),
         updatedAt: mindmap.updatedAt.toISOString(),
       }}
+      liveblocksEnabled={isLiveblocksConfigured()}
+      userName={session.user.name ?? session.user.email ?? "Anonymous"}
     />
   );
 }

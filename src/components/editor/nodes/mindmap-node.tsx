@@ -7,6 +7,7 @@ import { ChevronRight } from "lucide-react";
 import type { MindmapNode as MindmapNodeType } from "@/types/mindmap";
 import { useEditorStore } from "@/store/editor-store";
 import { getChildIds, getDescendantIds } from "@/lib/mindmap/tree-utils";
+import { useRemoteSelectors } from "@/components/editor/collab/use-remote-selectors";
 import { cn } from "@/lib/utils";
 
 function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
@@ -23,6 +24,11 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     collapsed ? getDescendantIds(s.edges, id).length : 0,
   );
   const isEditing = useEditorStore((s) => s.editingNodeId === id);
+  // Colors of remote collaborators (if any) who currently have this node selected —
+  // [] in solo mode. Only the first is rendered as a ring; simultaneous multi-user
+  // selection of the same node is rare enough that stacking several rings isn't
+  // worth the extra visual complexity.
+  const remoteSelectorColors = useRemoteSelectors(id);
 
   const setEditingNode = useEditorStore((s) => s.setEditingNode);
   const updateNodeLabel = useEditorStore((s) => s.updateNodeLabel);
@@ -35,12 +41,14 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     const el = editableRef.current;
     // React Flow renders a freshly-added node with `visibility: hidden` until its
     // ResizeObserver measures it a frame or two later — focusing before then is a
-    // silent no-op, so retry across frames until the focus actually lands.
+    // silent no-op, so retry across frames until the focus actually lands. Budget is
+    // generous (not just 2-3 frames) since real-time collaboration adds background
+    // work (WebSocket messages, Storage sync) competing for the same event loop.
     let frame: number;
     let attempts = 0;
     const tryFocus = () => {
       el.focus();
-      if (document.activeElement === el || attempts++ >= 20) return;
+      if (document.activeElement === el || attempts++ >= 60) return;
       frame = requestAnimationFrame(tryFocus);
     };
     tryFocus();
@@ -59,7 +67,15 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         "group relative min-w-[120px] max-w-[280px] rounded-xl border-2 bg-card px-4 py-2.5 text-card-foreground shadow-sm transition-shadow",
         selected ? "shadow-md" : "hover:shadow-md",
       )}
-      style={{ borderColor: selected ? (color ?? "var(--primary)") : "transparent" }}
+      style={{
+        borderColor: selected ? (color ?? "var(--primary)") : "transparent",
+        // Ring sits outside the node's own border (a card-colored gap, then the
+        // collaborator's color) so local selection and remote selection never visually
+        // collide, even when both are true at once.
+        boxShadow: remoteSelectorColors[0]
+          ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+          : undefined,
+      }}
     >
       <Handle type="target" position={Position.Left} className="opacity-0" />
       <Handle type="source" position={Position.Right} className="opacity-0" />

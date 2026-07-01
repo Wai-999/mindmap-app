@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ReactFlowProvider } from "@xyflow/react";
 
@@ -10,6 +10,8 @@ import { useKeyboardShortcuts } from "@/components/editor/keyboard/use-keyboard-
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
 import { SharedViewBanner } from "@/components/shared-view/shared-view-banner";
+import { LiveblocksRoomProvider } from "@/components/editor/collab/liveblocks-room-provider";
+import { mindmapRoomId } from "@/lib/liveblocks/room-id";
 import type { MindmapContent } from "@/types/mindmap";
 import type { SharePermission } from "@/types/share";
 
@@ -22,9 +24,15 @@ interface SharedMindmapViewerProps {
     content: MindmapContent;
     updatedAt: string;
   };
+  liveblocksEnabled: boolean;
 }
 
-export function SharedMindmapViewer({ token, permission, mindmap }: SharedMindmapViewerProps) {
+export function SharedMindmapViewer({
+  token,
+  permission,
+  mindmap,
+  liveblocksEnabled,
+}: SharedMindmapViewerProps) {
   const loadMindmap = useEditorStore((s) => s.loadMindmap);
   const isEditable = permission === "EDIT";
   const endpoint = `/api/shared/${token}`;
@@ -61,7 +69,11 @@ export function SharedMindmapViewer({ token, permission, mindmap }: SharedMindma
 
   useKeyboardShortcuts(endpoint);
 
-  return (
+  // A logged-out visitor has no account name — a stable-per-tab guest label is
+  // enough for presence avatars/rings to be distinguishable from each other.
+  const [guestName] = useState(() => `Guest ${Math.floor(100 + Math.random() * 900)}`);
+
+  const body = (
     <div className="flex h-svh flex-col">
       <SharedViewBanner title={mindmap.title} permission={permission} />
       <ReactFlowProvider>
@@ -71,5 +83,18 @@ export function SharedMindmapViewer({ token, permission, mindmap }: SharedMindma
         </div>
       </ReactFlowProvider>
     </div>
+  );
+
+  if (!liveblocksEnabled) return body;
+
+  return (
+    <LiveblocksRoomProvider
+      roomId={mindmapRoomId(mindmap.id)}
+      userName={guestName}
+      shareToken={token}
+      canWrite={isEditable}
+    >
+      {body}
+    </LiveblocksRoomProvider>
   );
 }

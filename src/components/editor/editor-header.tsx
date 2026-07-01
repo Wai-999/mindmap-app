@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SaveStatusIndicator } from "@/components/editor/save-status-indicator";
 import { ShareDialog } from "@/components/editor/share/share-dialog";
+import { PresenceAvatars } from "@/components/editor/collab/presence-avatars";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 export function EditorHeader() {
@@ -63,6 +64,7 @@ export function EditorHeader() {
         )}
       </div>
       <div className="flex items-center gap-3">
+        <PresenceAvatars />
         <SaveStatusIndicator />
         <ThemeToggle />
         {mindmapId && <ShareDialog mindmapId={mindmapId} />}
