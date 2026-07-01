@@ -31,10 +31,21 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const editableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isEditing && editableRef.current) {
-      editableRef.current.focus();
-    }
-  }, [isEditing]);
+    if (!isEditing || !editableRef.current) return;
+    const el = editableRef.current;
+    // React Flow renders a freshly-added node with `visibility: hidden` until its
+    // ResizeObserver measures it a frame or two later — focusing before then is a
+    // silent no-op, so retry across frames until the focus actually lands.
+    let frame: number;
+    let attempts = 0;
+    const tryFocus = () => {
+      el.focus();
+      if (document.activeElement === el || attempts++ >= 20) return;
+      frame = requestAnimationFrame(tryFocus);
+    };
+    tryFocus();
+    return () => cancelAnimationFrame(frame);
+  }, [isEditing, id]);
 
   function commitEdit() {
     const text = editableRef.current?.textContent?.trim() ?? "";

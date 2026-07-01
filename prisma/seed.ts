@@ -19,24 +19,26 @@ async function main() {
     },
   });
 
+  const demoContent = JSON.stringify({
+    nodes: [
+      {
+        id: "root",
+        type: "mindmapNode",
+        position: { x: 0, y: 0 },
+        data: { label: "Welcome to Mindmap", color: "#6366f1" },
+      },
+    ],
+    edges: [],
+  });
+
   await prisma.mindmap.upsert({
     where: { id: "demo-mindmap-seed" },
-    update: {},
+    update: { content: demoContent, thumbnail: null },
     create: {
       id: "demo-mindmap-seed",
       title: "Welcome to Mindmap",
       ownerId: user.id,
-      content: JSON.stringify({
-        nodes: [
-          {
-            id: "root",
-            type: "mindmapNode",
-            position: { x: 0, y: 0 },
-            data: { label: "Welcome to Mindmap", color: "#6366f1" },
-          },
-        ],
-        edges: [],
-      }),
+      content: demoContent,
     },
   });
 

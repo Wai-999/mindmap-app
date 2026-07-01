@@ -23,11 +23,16 @@ export function ShareLinkRow({ link, onRevoke }: ShareLinkRowProps) {
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-md border p-2">
+    <div className="flex items-center gap-2 rounded-md border p-2" data-testid="share-link-row">
       <Badge variant={link.permission === "EDIT" ? "default" : "secondary"} className="shrink-0">
         {link.permission === "EDIT" ? "Can edit" : "View only"}
       </Badge>
-      <span className="text-muted-foreground flex-1 truncate text-xs">{path}</span>
+      <span
+        className="text-muted-foreground flex-1 truncate text-xs"
+        data-testid="share-link-path"
+      >
+        {path}
+      </span>
       <Button
         variant="ghost"
         size="icon"
