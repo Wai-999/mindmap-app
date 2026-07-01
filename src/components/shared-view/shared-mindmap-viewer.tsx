@@ -80,7 +80,7 @@ export function SharedMindmapViewer({
       <ReactFlowProvider>
         <div className="relative flex-1">
           <MindmapCanvas />
-          {isEditable && <FloatingToolbar />}
+          {isEditable && <FloatingToolbar endpoint={endpoint} />}
           <NodeInspectorPanel endpoint={endpoint} />
         </div>
       </ReactFlowProvider>

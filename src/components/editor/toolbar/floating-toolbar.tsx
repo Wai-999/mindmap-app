@@ -13,7 +13,11 @@ import { ImportDialog } from "@/components/editor/export/import-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export function FloatingToolbar() {
+interface FloatingToolbarProps {
+  endpoint: string;
+}
+
+export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
   const readOnly = useEditorStore((s) => s.readOnly);
   const selectedNodeId = useEditorStore((s) => s.selectedNodeId);
   const addChildNode = useEditorStore((s) => s.addChildNode);
@@ -38,7 +42,7 @@ export function FloatingToolbar() {
       <Divider />
 
       <LayoutMenu />
-      <ExportMenu />
+      <ExportMenu endpoint={endpoint} />
       <ImportDialog />
 
       <Divider />

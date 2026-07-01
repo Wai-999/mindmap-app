@@ -81,7 +81,7 @@ export function MindmapEditorShell({
           {viewMode === "canvas" ? (
             <>
               <MindmapCanvas />
-              <FloatingToolbar />
+              <FloatingToolbar endpoint={`/api/mindmaps/${mindmap.id}`} />
               <NodeInspectorPanel endpoint={`/api/mindmaps/${mindmap.id}`} />
             </>
           ) : (
