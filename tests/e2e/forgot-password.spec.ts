@@ -32,11 +32,13 @@ test("forgot password: request a reset link, use it to set a new password, then 
   await visitorPage.getByRole("button", { name: "Send reset link" }).click();
   await expect(visitorPage.getByText("Check your email")).toBeVisible();
 
-  // No SMTP configured in the test environment, so the token only ever reaches the
-  // VerificationToken table — read it directly, standing in for "click the emailed
-  // link."
+  // No SMTP configured in the test environment (nor dev/self-hosted use without it),
+  // so the confirmation screen surfaces the link directly instead — assert it's the
+  // exact same token that landed in the VerificationToken table.
   const record = await e2eDb.verificationToken.findFirst({ where: { identifier: email } });
   expect(record).not.toBeNull();
+  const devLink = visitorPage.getByRole("link", { name: /reset-password\?token=/ });
+  await expect(devLink).toHaveAttribute("href", new RegExp(`token=${record!.token}$`));
 
   await visitorPage.goto(`/reset-password?token=${record!.token}`);
   await visitorPage.getByLabel("New password").fill(NEW_PASSWORD);

@@ -21,6 +21,11 @@ import {
 
 export function ForgotPasswordForm() {
   const [sent, setSent] = useState(false);
+  // Only ever populated by the API when SMTP isn't configured and the app isn't
+  // running in production — see the route's own comment. Lets local/self-hosted
+  // testing work without any mail setup, since there's otherwise nowhere for the
+  // link to surface besides the server's own console.
+  const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
 
   const {
     register,
@@ -31,11 +36,13 @@ export function ForgotPasswordForm() {
   });
 
   async function onSubmit(values: ForgotPasswordInput) {
-    await fetch("/api/forgot-password", {
+    const res = await fetch("/api/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(values),
     });
+    const body = await res.json().catch(() => null);
+    setDevResetUrl(body?.devResetUrl ?? null);
     // Same success state regardless of the response — the endpoint itself never
     // reveals whether the email is registered, so the UI shouldn't either.
     setSent(true);
@@ -52,6 +59,19 @@ export function ForgotPasswordForm() {
             It expires in 1 hour.
           </CardDescription>
         </CardHeader>
+        {devResetUrl && (
+          <CardContent>
+            <div className="bg-muted flex flex-col gap-2 rounded-md p-3 text-sm">
+              <p className="text-muted-foreground">
+                No email service is configured, so here&apos;s the link directly (dev only —
+                this never appears in production):
+              </p>
+              <Link href={devResetUrl} className="text-foreground break-all underline underline-offset-4">
+                {devResetUrl}
+              </Link>
+            </div>
+          </CardContent>
+        )}
         <CardFooter>
           <Link href="/login" className="text-foreground text-sm underline underline-offset-4">
             Back to sign in
