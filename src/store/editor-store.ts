@@ -185,7 +185,15 @@ export const useEditorStore = create<EditorState>()(
     onNodesChange: (changes) =>
       set((s) => {
         const meaningful = changes.some(
-          (c) => c.type === "position" || c.type === "add" || c.type === "remove",
+          (c) =>
+            c.type === "position" ||
+            c.type === "add" ||
+            c.type === "remove" ||
+            // A NodeResizer drag: `setAttributes` marks a user-intended resize that
+            // writes width/height onto the node, as opposed to the constant
+            // measurement-only "dimensions" changes React Flow's ResizeObserver fires
+            // (which carry no setAttributes and must NOT dirty the canvas or autosave).
+            (c.type === "dimensions" && Boolean(c.setAttributes)),
         );
         return {
           nodes: applyNodeChanges(changes, s.nodes),

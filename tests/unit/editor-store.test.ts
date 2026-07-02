@@ -406,6 +406,40 @@ describe("editor-store addImageNode (upload image onto canvas)", () => {
   });
 });
 
+describe("editor-store onNodesChange (resize vs measurement noise)", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+  });
+
+  it("marks the canvas dirty on a NodeResizer resize (dimensions change with setAttributes)", () => {
+    const revBefore = useEditorStore.getState().revision;
+    useEditorStore.getState().onNodesChange([
+      {
+        id: "root",
+        type: "dimensions",
+        setAttributes: true,
+        dimensions: { width: 320, height: 180 },
+        resizing: true,
+      },
+    ]);
+    const state = useEditorStore.getState();
+    expect(state.dirty).toBe(true);
+    expect(state.revision).toBe(revBefore + 1);
+  });
+
+  it("does NOT dirty the canvas on a measurement-only dimensions change (no setAttributes)", () => {
+    // These fire constantly from React Flow's ResizeObserver — treating them as edits
+    // would autosave-storm and mark a pristine just-loaded canvas dirty.
+    const revBefore = useEditorStore.getState().revision;
+    useEditorStore.getState().onNodesChange([
+      { id: "root", type: "dimensions", dimensions: { width: 120, height: 40 } },
+    ]);
+    const state = useEditorStore.getState();
+    expect(state.dirty).toBe(false);
+    expect(state.revision).toBe(revBefore);
+  });
+});
+
 describe("editor-store reconnectLinkEdge (dragging an existing connection's end)", () => {
   beforeEach(() => {
     load([makeNode("root"), makeNode("a"), makeNode("b"), makeNode("c")], [makeEdge("root", "a")]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef } from "react";
-import { Handle, Position, useConnection, type NodeProps } from "@xyflow/react";
+import { Handle, Position, NodeResizer, useConnection, type NodeProps } from "@xyflow/react";
 import { ChevronRight, Info, StickyNote, CheckSquare, Square, ImageIcon } from "lucide-react";
 
 import type { MindmapNode as MindmapNodeType, NodeSize } from "@/types/mindmap";
@@ -89,6 +89,11 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const shape = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.shape ?? "rounded");
   const size = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.size ?? "medium");
   const imageOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.imageOnly ?? false);
+  // Explicit dimensions once an image node has been manually resized (NodeResizer
+  // writes these top-level props via onNodesChange). Undefined until first resize —
+  // the node is content-sized (image at its preset width) up to that point.
+  const explicitWidth = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.width);
+  const explicitHeight = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.height);
   const note = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.note);
   const task = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.task);
   // First image attachment only — a small cover thumbnail, not a gallery, matching
@@ -114,10 +119,12 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     (c) => c.inProgress && c.fromNode?.id !== id,
   );
 
+  const readOnly = useEditorStore((s) => s.readOnly);
   const setEditingNode = useEditorStore((s) => s.setEditingNode);
   const setInspectorNode = useEditorStore((s) => s.setInspectorNode);
   const updateNodeLabel = useEditorStore((s) => s.updateNodeLabel);
   const toggleCollapsed = useEditorStore((s) => s.toggleCollapsed);
+  const commitBeforeDrag = useEditorStore((s) => s.commitBeforeDrag);
 
   const editableRef = useRef<HTMLDivElement>(null);
 
@@ -195,11 +202,15 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
 
   // A standalone image node: just the uploaded image (or a placeholder until the
   // upload lands), no label/dot/card chrome. Still fully a node — draggable,
-  // connectable via the shared strips, selectable, deletable, resizable by size.
+  // connectable via the shared strips, selectable, deletable, and freely resizable
+  // by dragging its corner handles (NodeResizer), which keeps the image's aspect
+  // ratio. Until the first manual resize it's content-sized at the S/M/L preset
+  // width; after, it fills the explicit width/height React Flow sets on the node.
   if (imageOnly) {
+    const hasExplicitSize = explicitWidth != null && explicitHeight != null;
     return (
       <div
-        className="group relative"
+        className={cn("group relative", hasExplicitSize && "size-full")}
         style={{
           boxShadow: remoteSelectorColors[0]
             ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
@@ -209,6 +220,17 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           borderRadius: 12,
         }}
       >
+        {selected && !readOnly && (
+          <NodeResizer
+            color={color ?? "var(--primary)"}
+            keepAspectRatio
+            minWidth={60}
+            minHeight={40}
+            // One undo entry per whole resize gesture, not one per pointer-move
+            // frame — same treatment as a node drag (commitBeforeDrag on start).
+            onResizeStart={commitBeforeDrag}
+          />
+        )}
         {connectionHandles}
         {imageUrl ? (
           // Private, per-node upload from local storage — never optimizable via
@@ -217,14 +239,25 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           <img
             src={imageUrl}
             alt={label || "Image"}
-            className="block max-h-[420px] rounded-xl object-contain"
-            style={{ width: SIZE_IMAGE_WIDTH[size] }}
+            // max-w-none overrides Tailwind Preflight's `img { max-width: 100% }`,
+            // which would otherwise cap the image to its parent's width — and the
+            // parent is shrink-to-fit around this very image, so with NodeResizer's
+            // absolutely-positioned controls also present that resolves to 0 and the
+            // node never measures itself out of React Flow's initial hidden state.
+            className={cn(
+              "block max-w-none rounded-xl object-contain",
+              hasExplicitSize ? "size-full" : "max-h-[420px]",
+            )}
+            style={hasExplicitSize ? undefined : { width: SIZE_IMAGE_WIDTH[size] }}
             draggable={false}
           />
         ) : (
           <div
-            className="text-muted-foreground flex h-32 items-center justify-center rounded-xl border border-dashed"
-            style={{ width: SIZE_IMAGE_WIDTH[size] }}
+            className={cn(
+              "text-muted-foreground flex items-center justify-center rounded-xl border border-dashed",
+              hasExplicitSize ? "size-full" : "h-32",
+            )}
+            style={hasExplicitSize ? undefined : { width: SIZE_IMAGE_WIDTH[size] }}
           >
             <ImageIcon className="size-6 animate-pulse" />
           </div>

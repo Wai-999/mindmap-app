@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { nodeDataSchema } from "@/lib/validations/mindmap";
+import { nodeDataSchema, mindmapNodeSchema } from "@/lib/validations/mindmap";
 
 describe("nodeDataSchema (note/task fields)", () => {
   it("accepts a node with no note/task (both optional)", () => {
@@ -57,5 +57,32 @@ describe("nodeDataSchema (size / imageOnly fields)", () => {
 
   it("rejects a non-boolean imageOnly", () => {
     expect(nodeDataSchema.safeParse({ label: "Idea", imageOnly: "yes" }).success).toBe(false);
+  });
+});
+
+describe("mindmapNodeSchema (explicit width/height from resizing)", () => {
+  const base = {
+    id: "n1",
+    type: "mindmapNode" as const,
+    position: { x: 0, y: 0 },
+    data: { label: "x" },
+  };
+
+  it("accepts a node with no width/height (content-sized, the common case)", () => {
+    expect(mindmapNodeSchema.safeParse(base).success).toBe(true);
+  });
+
+  it("preserves width/height through a parse (so a resize survives save/reload)", () => {
+    const result = mindmapNodeSchema.safeParse({ ...base, width: 320, height: 180 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.width).toBe(320);
+      expect(result.data.height).toBe(180);
+    }
+  });
+
+  it("rejects a non-positive dimension", () => {
+    expect(mindmapNodeSchema.safeParse({ ...base, width: 0, height: 100 }).success).toBe(false);
+    expect(mindmapNodeSchema.safeParse({ ...base, width: -5, height: 100 }).success).toBe(false);
   });
 });

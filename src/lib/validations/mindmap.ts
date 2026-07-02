@@ -41,6 +41,12 @@ export const mindmapNodeSchema = z.object({
   // (unlike Edge<T, "mindmapEdge">, which keeps it optional) — required here to match.
   type: z.literal("mindmapNode"),
   position: z.object({ x: z.number(), y: z.number() }),
+  // Explicit rendered dimensions, set only when a node is manually resized (currently
+  // image nodes, via NodeResizer). React Flow stores these as top-level Node props, so
+  // they live here rather than in `data`; capped for the same DoS reason array sizes
+  // are. Absent = content-sized (every text node, and an image node until first resize).
+  width: z.number().positive().max(10_000).optional(),
+  height: z.number().positive().max(10_000).optional(),
   data: nodeDataSchema,
 });
 
