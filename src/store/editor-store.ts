@@ -7,6 +7,7 @@ import type { MindmapNode, MindmapEdge, MindmapNodeData } from "@/types/mindmap"
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
 import { getParentId, getChildIds, getSubtreeIds, isHierarchyEdge } from "@/lib/mindmap/tree-utils";
 import { resolveNewNodeColor, resolveNewRootColor } from "@/lib/mindmap/color";
+import { getLastCanvasPoint } from "@/lib/mindmap/canvas-cursor";
 import { useHistoryStore } from "@/store/history-store";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -55,17 +56,27 @@ interface EditorState {
   updateNodeTask: (id: string, task: MindmapNodeData["task"]) => void;
   toggleCollapsed: (id: string) => void;
 
-  addChildNode: (parentId: string) => string | null;
+  // `at` overrides the usual computed offset-from-parent position — used when a
+  // child is spawned by dragging a connection out to empty canvas, so it lands where
+  // the user dropped it rather than in the fixed grid spot.
+  addChildNode: (parentId: string, at?: { x: number; y: number }) => string | null;
   addSiblingNode: (nodeId: string) => string | null;
   // A new independent primary idea — no parent edge. Also the fallback target when
   // addSiblingNode is called on a root (a root's "sibling" is a new root).
-  addRootNode: () => string | null;
+  // `at` is a flow-coordinate point to center the new idea on (e.g. a double-clicked
+  // pane position); when omitted, falls back to the cursor's last tracked canvas
+  // position, and only then to a computed spot below the existing content.
+  addRootNode: (at?: { x: number; y: number }) => string | null;
   // A free-form relationship line between any two nodes (including across separate
   // primary ideas), drawn by dragging between handles — distinct from a hierarchy edge
   // and ignored by layout/export/subtree-delete. Returns the new edge's id, or null if
   // rejected (self-loop, missing node, duplicate pair, or readOnly).
   addLinkEdge: (source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null) => string | null;
   removeLinkEdge: (edgeId: string) => void;
+  // Re-targets an existing link edge's endpoints (dragging one end to a different
+  // node) — never applies to hierarchy edges, which only change via the structural
+  // actions above.
+  reconnectLinkEdge: (edgeId: string, newSource: string, newTarget: string) => void;
   deleteNodeAndSubtree: (nodeId: string) => void;
   duplicateSubtree: (nodeId: string) => string | null;
   applyLayout: (positions: Record<string, { x: number; y: number }>) => void;
@@ -85,6 +96,11 @@ interface EditorState {
   markSaved: (updatedAt: string, savedRevision: number) => void;
   markSaveError: () => void;
 }
+
+// Roughly half a default node's rendered size (min-width 120px, ~42px tall), so a
+// node created "at" a point appears centered on it, not hanging off to the lower-right.
+// Exported for the unit tests that assert cursor-relative placement.
+export const ROOT_AT_CURSOR_OFFSET = { x: 60, y: 21 };
 
 function computeChildPosition(parent: MindmapNode, existingChildCount: number) {
   const horizontalGap = 240;
@@ -238,7 +254,7 @@ export const useEditorStore = create<EditorState>()(
         revision: s.revision + 1,
       })),
 
-    addChildNode: (parentId) => {
+    addChildNode: (parentId, at) => {
       const state = get();
       if (state.readOnly) return null;
       const parent = state.nodes.find((n) => n.id === parentId);
@@ -251,7 +267,7 @@ export const useEditorStore = create<EditorState>()(
       const newNode: MindmapNode = {
         id,
         type: "mindmapNode",
-        position: computeChildPosition(parent, siblingCount),
+        position: at ?? computeChildPosition(parent, siblingCount),
         data: {
           label: "",
           color: resolveNewNodeColor(state.nodes, state.edges, parentId),
@@ -282,21 +298,28 @@ export const useEditorStore = create<EditorState>()(
       return get().addChildNode(parentId);
     },
 
-    addRootNode: () => {
+    addRootNode: (at) => {
       const state = get();
       if (state.readOnly) return null;
 
       commitHistory(state.nodes, state.edges);
 
-      // Below-and-left of everything else, so a new primary idea reads as a fresh
-      // start rather than overlapping any existing tree's bounding box.
+      // Preferred: center the new idea on where the user is pointing (an explicit
+      // point from a pane double-click, else the cursor's last tracked canvas
+      // position). Fallback: below-and-left of everything else, so it still reads as
+      // a fresh start rather than overlapping any existing tree's bounding box.
+      const cursor = at ?? getLastCanvasPoint();
       const minX = state.nodes.length > 0 ? Math.min(...state.nodes.map((n) => n.position.x)) : 0;
       const maxY = state.nodes.length > 0 ? Math.max(...state.nodes.map((n) => n.position.y)) : 0;
+      const position = cursor
+        ? { x: cursor.x - ROOT_AT_CURSOR_OFFSET.x, y: cursor.y - ROOT_AT_CURSOR_OFFSET.y }
+        : { x: minX, y: maxY + 160 };
+
       const id = generateNodeId();
       const newNode: MindmapNode = {
         id,
         type: "mindmapNode",
-        position: { x: minX, y: maxY + 160 },
+        position,
         data: { label: "", color: resolveNewRootColor(state.nodes, state.edges) },
       };
 
@@ -361,6 +384,38 @@ export const useEditorStore = create<EditorState>()(
       commitHistory(state.nodes, state.edges);
       set((s) => ({
         edges: s.edges.filter((e) => e.id !== edgeId),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    reconnectLinkEdge: (edgeId, newSource, newTarget) => {
+      const state = get();
+      if (state.readOnly) return;
+      if (newSource === newTarget) return;
+
+      const target = state.edges.find((e) => e.id === edgeId);
+      // Same defensive guard as removeLinkEdge — reconnecting is only ever wired up
+      // for link edges; hierarchy shape only ever changes through the structural
+      // actions (addChildNode, deleteNodeAndSubtree, etc).
+      if (!target || isHierarchyEdge(target)) return;
+      if (!state.nodes.some((n) => n.id === newSource) || !state.nodes.some((n) => n.id === newTarget)) {
+        return;
+      }
+
+      // Dragging this edge's end onto a pair that's already connected some other way
+      // would just overlap an existing line — reject rather than create a duplicate.
+      const wouldDuplicate = state.edges.some(
+        (e) =>
+          e.id !== edgeId &&
+          ((e.source === newSource && e.target === newTarget) ||
+            (e.source === newTarget && e.target === newSource)),
+      );
+      if (wouldDuplicate) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        edges: s.edges.map((e) => (e.id === edgeId ? { ...e, source: newSource, target: newTarget } : e)),
         dirty: true,
         revision: s.revision + 1,
       }));

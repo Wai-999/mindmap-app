@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, Position, useConnection, type NodeProps } from "@xyflow/react";
 import { ChevronRight, Info, StickyNote, CheckSquare, Square } from "lucide-react";
 
 import type { MindmapNode as MindmapNodeType } from "@/types/mindmap";
@@ -9,6 +9,25 @@ import { useEditorStore } from "@/store/editor-store";
 import { getChildIds, getDescendantIds } from "@/lib/mindmap/tree-utils";
 import { useRemoteSelectors } from "@/components/editor/collab/use-remote-selectors";
 import { cn } from "@/lib/utils";
+
+// One invisible ~10px strip per side, together covering the node's whole border.
+// Inline styles (not classes) because they must override React Flow's default handle
+// CSS (6px dot, 50% offset, translate centering) property-for-property.
+const STRIP_BASE: React.CSSProperties = {
+  position: "absolute",
+  transform: "none",
+  borderRadius: 0,
+  background: "transparent",
+  border: "none",
+  cursor: "crosshair",
+};
+
+const HANDLE_STRIPS: { id: string; position: Position; style: React.CSSProperties }[] = [
+  { id: "top", position: Position.Top, style: { ...STRIP_BASE, top: -5, left: 0, width: "100%", height: 10 } },
+  { id: "bottom", position: Position.Bottom, style: { ...STRIP_BASE, bottom: -5, top: "auto", left: 0, width: "100%", height: 10 } },
+  { id: "left", position: Position.Left, style: { ...STRIP_BASE, left: -5, top: 0, width: 10, height: "100%" } },
+  { id: "right", position: Position.Right, style: { ...STRIP_BASE, right: -5, left: "auto", top: 0, width: 10, height: "100%" } },
+];
 
 function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // Selection is driven entirely by our own store (selectedNodeId), not React Flow's
@@ -31,6 +50,12 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // selection of the same node is rare enough that stacking several rings isn't
   // worth the extra visual complexity.
   const remoteSelectorColors = useRemoteSelectors(id);
+  // True while the user is dragging a connection that started on a DIFFERENT node —
+  // used to turn this node's entire body into a drop target for the duration, so a
+  // link can end anywhere on the node, not just on its border strips.
+  const isConnectionTarget = useConnection(
+    (c) => c.inProgress && c.fromNode?.id !== id,
+  );
 
   const setEditingNode = useEditorStore((s) => s.setEditingNode);
   const setInspectorNode = useEditorStore((s) => s.setInspectorNode);
@@ -80,35 +105,42 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           : undefined,
       }}
     >
-      {/* Four connectable sides so a free-form link can be dragged in any direction —
-          not just the fixed left/right pair the hierarchy tree uses. Each gets an
-          explicit id so connection lookups never fall back to "whichever handle is
-          declared first," and connectionMode="loose" on the canvas lets any of them
-          both start and end a drag regardless of its declared source/target type. */}
-      <Handle
-        type="target"
-        id="left"
-        position={Position.Left}
-        className="size-2.5! border-2! bg-background! opacity-0 transition-opacity group-hover:opacity-100"
-      />
-      <Handle
-        type="source"
-        id="right"
-        position={Position.Right}
-        className="size-2.5! border-2! bg-background! opacity-0 transition-opacity group-hover:opacity-100"
-      />
-      <Handle
-        type="target"
-        id="top"
-        position={Position.Top}
-        className="size-2.5! border-2! bg-background! opacity-0 transition-opacity group-hover:opacity-100"
-      />
-      <Handle
-        type="source"
-        id="bottom"
-        position={Position.Bottom}
-        className="size-2.5! border-2! bg-background! opacity-0 transition-opacity group-hover:opacity-100"
-      />
+      {/* Invisible strips covering the node's whole border, one per side, so a
+          free-form link drag can start from ANY point on the perimeter (crosshair
+          cursor gives the affordance) — the interior stays free for dragging the node
+          itself. Ids are kept as the four side names because hierarchy edges anchor to
+          "right"/"left" (see the normalization in mindmap-canvas.tsx), and each strip's
+          center is exactly that side's midpoint. connectionMode="loose" on the canvas
+          lets every strip both start and end a connection. */}
+      {HANDLE_STRIPS.map((strip) => (
+        <Handle key={strip.id} type="source" id={strip.id} position={strip.position} style={strip.style} />
+      ))}
+
+      {/* While a connection drag from another node is in progress, the entire node
+          becomes a drop target — the link can end anywhere on the node, not just on a
+          border strip. Rendered only during the drag so it never blocks normal
+          click/drag/edit interactions; zIndex lifts it above the node's own content,
+          since the drop is resolved by hit-testing whatever element is under the
+          pointer, and the label/buttons would otherwise swallow it. */}
+      {isConnectionTarget && (
+        <Handle
+          type="target"
+          id="drop"
+          position={Position.Left}
+          isConnectableStart={false}
+          style={{
+            position: "absolute",
+            inset: 0,
+            transform: "none",
+            width: "100%",
+            height: "100%",
+            borderRadius: 12,
+            background: "transparent",
+            border: "none",
+            zIndex: 10,
+          }}
+        />
+      )}
 
       <div className="flex items-center gap-2">
         <span
