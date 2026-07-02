@@ -85,6 +85,13 @@ interface EditorState {
   // and ignored by layout/export/subtree-delete. Returns the new edge's id, or null if
   // rejected (self-loop, missing node, duplicate pair, or readOnly).
   addLinkEdge: (source: string, target: string, sourceHandle?: string | null, targetHandle?: string | null) => string | null;
+  // A brand-new node connected to fromNodeId by a link edge (dashed, floating —
+  // rotates around either node as they move), not a hierarchy edge — used when
+  // dragging a connection out and releasing it on empty canvas, so the result
+  // matches the free-form nature of the drag that created it rather than silently
+  // becoming a strict parent/child relationship. Returns the new node's id, or null
+  // if rejected (missing source node, or readOnly).
+  addLinkedNode: (fromNodeId: string, position: { x: number; y: number }) => string | null;
   removeLinkEdge: (edgeId: string) => void;
   // Re-targets an existing link edge's endpoints (dragging one end to a different
   // node) — never applies to hierarchy edges, which only change via the structural
@@ -363,6 +370,44 @@ export const useEditorStore = create<EditorState>()(
 
       set((s) => ({
         nodes: [...s.nodes, newNode],
+        selectedNodeId: id,
+        editingNodeId: id,
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+
+      return id;
+    },
+
+    addLinkedNode: (fromNodeId, position) => {
+      const state = get();
+      if (state.readOnly) return null;
+      const fromNode = state.nodes.find((n) => n.id === fromNodeId);
+      if (!fromNode) return null;
+
+      commitHistory(state.nodes, state.edges);
+
+      const id = generateNodeId();
+      const newNode: MindmapNode = {
+        id,
+        type: "mindmapNode",
+        position,
+        // resolveNewRootColor (an independent idea's own color), not
+        // resolveNewNodeColor (which picks from the parent's own family) — this
+        // node isn't a hierarchy child, so it shouldn't visually read as one.
+        data: { label: "", color: resolveNewRootColor(state.nodes, state.edges) },
+      };
+      const newEdge: MindmapEdge = {
+        id: generateEdgeId(fromNodeId, id),
+        type: "mindmapEdge",
+        source: fromNodeId,
+        target: id,
+        data: { kind: "link" },
+      };
+
+      set((s) => ({
+        nodes: [...s.nodes, newNode],
+        edges: [...s.edges, newEdge],
         selectedNodeId: id,
         editingNodeId: id,
         dirty: true,

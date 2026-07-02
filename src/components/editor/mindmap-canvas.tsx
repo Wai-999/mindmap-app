@@ -41,7 +41,7 @@ export function MindmapCanvas() {
   const setEditingNode = useEditorStore((s) => s.setEditingNode);
   const commitBeforeDrag = useEditorStore((s) => s.commitBeforeDrag);
   const addLinkEdge = useEditorStore((s) => s.addLinkEdge);
-  const addChildNode = useEditorStore((s) => s.addChildNode);
+  const addLinkedNode = useEditorStore((s) => s.addLinkedNode);
   const addRootNode = useEditorStore((s) => s.addRootNode);
   const reconnectLinkEdge = useEditorStore((s) => s.reconnectLinkEdge);
   const { screenToFlowPosition } = useReactFlow();
@@ -123,18 +123,22 @@ export function MindmapCanvas() {
   );
 
   // Dragging a connection out and releasing it on empty canvas (not onto another
-  // node — that's handleConnect's job) spawns a new child idea right where it was
-  // dropped, connected by a real hierarchy edge to whichever node the drag started
-  // from. Ties together "connect from anywhere" and "new idea where the cursor is"
-  // into the one gesture most mind-mapping tools use for quickly extending a branch.
+  // node — that's handleConnect's job) spawns a new idea right where it was dropped,
+  // joined to whichever node the drag started from by a link edge — dashed and
+  // floating (rotates around either node as they move), matching the free-form
+  // connection that created it, rather than silently becoming a fixed-anchor
+  // hierarchy edge that only looks right when the new node happens to land to the
+  // parent's right. Ties together "connect from anywhere" and "new idea where the
+  // cursor is" into the one gesture most mind-mapping tools use to spin off a
+  // related-but-independent idea.
   const handleConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
       if (readOnly || connectionState.isValid || !connectionState.fromNode) return;
       const point = "changedTouches" in event ? event.changedTouches[0] : event;
       const position = screenToFlowPosition({ x: point.clientX, y: point.clientY });
-      addChildNode(connectionState.fromNode.id, position);
+      addLinkedNode(connectionState.fromNode.id, position);
     },
-    [readOnly, addChildNode, screenToFlowPosition],
+    [readOnly, addLinkedNode, screenToFlowPosition],
   );
 
   // Grabbing an existing link edge's endpoint and dragging it to a different node —

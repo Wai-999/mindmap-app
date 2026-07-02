@@ -261,7 +261,7 @@ describe("editor-store addLinkEdge / removeLinkEdge (free-form connections)", ()
   });
 });
 
-describe("editor-store addChildNode position override (drag-to-empty-canvas)", () => {
+describe("editor-store addChildNode position override (Tab/Enter still use the computed default)", () => {
   beforeEach(() => {
     load([makeNode("root")], []);
   });
@@ -283,6 +283,55 @@ describe("editor-store addChildNode position override (drag-to-empty-canvas)", (
     const id = useEditorStore.getState().addChildNode("root")!;
     const node = useEditorStore.getState().nodes.find((n) => n.id === id);
     expect(node?.position).not.toEqual({ x: 500, y: 400 });
+  });
+});
+
+describe("editor-store addLinkedNode (drag-to-empty-canvas)", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+  });
+
+  it("places the new node at the given point", () => {
+    const id = useEditorStore.getState().addLinkedNode("root", { x: 500, y: 400 })!;
+    const node = useEditorStore.getState().nodes.find((n) => n.id === id);
+    expect(node?.position).toEqual({ x: 500, y: 400 });
+  });
+
+  it("connects it to the source node with a link edge, not a hierarchy edge", () => {
+    const id = useEditorStore.getState().addLinkedNode("root", { x: 500, y: 400 })!;
+    const edge = useEditorStore.getState().edges.find((e) => e.target === id);
+    expect(edge?.source).toBe("root");
+    expect(edge?.data?.kind).toBe("link");
+  });
+
+  it("selects and enters edit mode on the new node", () => {
+    const id = useEditorStore.getState().addLinkedNode("root", { x: 500, y: 400 })!;
+    const state = useEditorStore.getState();
+    expect(state.selectedNodeId).toBe(id);
+    expect(state.editingNodeId).toBe(id);
+  });
+
+  it("returns null and does nothing when the source node doesn't exist", () => {
+    const before = useEditorStore.getState().nodes.length;
+    const id = useEditorStore.getState().addLinkedNode("nope", { x: 0, y: 0 });
+    expect(id).toBeNull();
+    expect(useEditorStore.getState().nodes).toHaveLength(before);
+  });
+
+  it("does nothing and returns null when read-only", () => {
+    load([makeNode("root")], [], true);
+    const id = useEditorStore.getState().addLinkedNode("root", { x: 0, y: 0 });
+    expect(id).toBeNull();
+  });
+
+  it("is one Undo away (both the node and the link edge)", () => {
+    const before = useEditorStore.getState().nodes.length;
+    const id = useEditorStore.getState().addLinkedNode("root", { x: 500, y: 400 })!;
+    useEditorStore.getState().undo();
+
+    const state = useEditorStore.getState();
+    expect(state.nodes).toHaveLength(before);
+    expect(state.edges.some((e) => e.target === id)).toBe(false);
   });
 });
 

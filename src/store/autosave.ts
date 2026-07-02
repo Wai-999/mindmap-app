@@ -5,6 +5,27 @@ import type { MindmapContent } from "@/types/mindmap";
 
 const DEBOUNCE_MS = 800;
 const FALLBACK_INTERVAL_MS = 10_000;
+// Rasterizing the whole canvas (html-to-image cloning every node's DOM) is the one
+// genuinely expensive part of a save — cheap enough to not notice once in a while,
+// but doing it on every single debounced save (as often as every 800ms while
+// actively editing) was visibly janky. The dashboard thumbnail doesn't need to be
+// that fresh, so it's throttled independently of the content save itself.
+const THUMBNAIL_MIN_INTERVAL_MS = 30_000;
+let lastThumbnailAt = 0;
+
+// Runs the capture during browser idle time rather than synchronously in the middle
+// of a debounce callback, so its cost lands when nothing else is competing for the
+// main thread. Safari has no requestIdleCallback at all, hence the setTimeout fallback.
+function captureThumbnailWhenIdle(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const run = () => void captureThumbnail().then(resolve, () => resolve(null));
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      setTimeout(run, 0);
+    }
+  });
+}
 
 export interface ConflictDetail {
   content: MindmapContent;
@@ -41,7 +62,12 @@ async function flush(endpoint: string, includeThumbnail = true, isRetry = false)
 
   useEditorStore.getState().markSaving();
 
-  const thumbnail = includeThumbnail ? await captureThumbnail().catch(() => null) : null;
+  // null here just means "leave the dashboard thumbnail as whatever it already is" —
+  // the update route only touches the stored thumbnail when it's given a real value
+  // (see applyMindmapUpdate), so skipping the capture entirely on most saves is safe.
+  const shouldCaptureThumbnail = includeThumbnail && Date.now() - lastThumbnailAt >= THUMBNAIL_MIN_INTERVAL_MS;
+  if (shouldCaptureThumbnail) lastThumbnailAt = Date.now();
+  const thumbnail = shouldCaptureThumbnail ? await captureThumbnailWhenIdle() : null;
 
   try {
     const res = await fetch(endpoint, {
