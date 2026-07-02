@@ -6,6 +6,9 @@ import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
 function makeNode(id: string): MindmapNode {
   return { id, type: "mindmapNode", position: { x: 0, y: 0 }, data: { label: id } };
 }
+function makeNodeAt(id: string, x: number): MindmapNode {
+  return { id, type: "mindmapNode", position: { x, y: 0 }, data: { label: id } };
+}
 function makeEdge(source: string, target: string): MindmapEdge {
   return { id: `e_${source}_${target}`, type: "mindmapEdge", source, target };
 }
@@ -85,6 +88,56 @@ describe("computeTreeLayout", () => {
       // Still two separate trees stacked with a gap, exactly as without the link edge.
       expect(Math.min(...secondTreeYs)).toBeGreaterThan(Math.max(...firstTreeYs));
       expect(positions.root2.x).toBeCloseTo(positions.root.x);
+    });
+  });
+
+  describe("double-sided LR (smart auto-placement's left/right children)", () => {
+    // root already has a on its left and b on its right (matching what the
+    // smart-placement add-child gesture, or a manual drag, would produce) — Tidy
+    // Layout must preserve that split, not collapse both back onto the right.
+    const mixedNodes = [makeNodeAt("root", 0), makeNodeAt("a", -240), makeNodeAt("b", 240)];
+    const mixedEdges = [makeEdge("root", "a"), makeEdge("root", "b")];
+
+    it("keeps the left child to the left and the right child to the right", () => {
+      const positions = computeTreeLayout(mixedNodes, mixedEdges, "LR");
+      expect(positions.a.x).toBeLessThan(positions.root.x);
+      expect(positions.b.x).toBeGreaterThan(positions.root.x);
+    });
+
+    it("a left child's own children continue further left (outward), not back toward the root", () => {
+      const nodes = [...mixedNodes, makeNodeAt("a1", -480)];
+      const edges = [...mixedEdges, makeEdge("a", "a1")];
+      const positions = computeTreeLayout(nodes, edges, "LR");
+      expect(positions.a1.x).toBeLessThan(positions.a.x);
+    });
+
+    it("a right child's own children continue further right, unaffected by the left side existing", () => {
+      const nodes = [...mixedNodes, makeNodeAt("b1", 480)];
+      const edges = [...mixedEdges, makeEdge("b", "b1")];
+      const positions = computeTreeLayout(nodes, edges, "LR");
+      expect(positions.b1.x).toBeGreaterThan(positions.b.x);
+    });
+
+    it("falls back to the plain single-direction layout when there are no left children at all", () => {
+      // Every child on the right (today's common case) — result should be identical
+      // to the non-double-sided algorithm, not just "also correct".
+      const allRightNodes = [makeNodeAt("root", 0), makeNodeAt("a", 240), makeNodeAt("b", 240)];
+      const allRightEdges = [makeEdge("root", "a"), makeEdge("root", "b")];
+      const positions = computeTreeLayout(allRightNodes, allRightEdges, "LR");
+      expect(positions.a.x).toBeGreaterThan(positions.root.x);
+      expect(positions.b.x).toBeGreaterThan(positions.root.x);
+      expect(new Set([positions.a.y, positions.b.y]).size).toBe(2); // still distinct, stacked
+    });
+
+    it("the root stays at a stable depth-axis position regardless of the left/right split", () => {
+      const positions = computeTreeLayout(mixedNodes, mixedEdges, "LR");
+      expect(positions.root.x).toBeCloseTo(0);
+    });
+
+    it("TB direction is unaffected by left/right — still single-direction", () => {
+      const positions = computeTreeLayout(mixedNodes, mixedEdges, "TB");
+      expect(positions.a.y).toBeGreaterThan(positions.root.y);
+      expect(positions.b.y).toBeGreaterThan(positions.root.y);
     });
   });
 });

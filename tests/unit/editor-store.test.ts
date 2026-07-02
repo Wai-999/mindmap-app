@@ -693,3 +693,64 @@ describe("editor-store focus mode", () => {
     expect(useEditorStore.getState().focusedNodeId).toBeNull();
   });
 });
+
+describe("editor-store addChildNode smart auto-placement (left/right)", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+  });
+
+  it("a root's first child goes to the right of it", () => {
+    const id = useEditorStore.getState().addChildNode("root")!;
+    const node = useEditorStore.getState().nodes.find((n) => n.id === id);
+    expect(node?.position.x).toBeGreaterThan(0);
+  });
+
+  it("a root's second child alternates to the left", () => {
+    useEditorStore.getState().addChildNode("root");
+    const secondId = useEditorStore.getState().addChildNode("root")!;
+    const node = useEditorStore.getState().nodes.find((n) => n.id === secondId);
+    expect(node?.position.x).toBeLessThan(0);
+  });
+
+  it("a deeper node's children all continue the same side as their own branch, not alternating", () => {
+    const leftChildId = useEditorStore.getState().addChildNode("root")!; // right (1st)
+    useEditorStore.getState().addChildNode("root"); // left (2nd) — call it "leftBranch"
+    const state1 = useEditorStore.getState();
+    const leftBranchId = state1.nodes.find((n) => n.position.x < 0 && n.id !== "root")!.id;
+
+    const grandchild1 = useEditorStore.getState().addChildNode(leftBranchId)!;
+    const grandchild2 = useEditorStore.getState().addChildNode(leftBranchId)!;
+
+    const state2 = useEditorStore.getState();
+    const g1 = state2.nodes.find((n) => n.id === grandchild1)!;
+    const g2 = state2.nodes.find((n) => n.id === grandchild2)!;
+    const leftBranch = state2.nodes.find((n) => n.id === leftBranchId)!;
+
+    // Both grandchildren continue further left of their own (already-left) parent —
+    // neither alternates back to the right.
+    expect(g1.position.x).toBeLessThan(leftBranch.position.x);
+    expect(g2.position.x).toBeLessThan(leftBranch.position.x);
+    // Sanity: the right-side sibling from step 1 is untouched by any of this.
+    expect(state2.nodes.find((n) => n.id === leftChildId)!.position.x).toBeGreaterThan(0);
+  });
+
+  it("stacks same-side siblings vertically independent of the other side's count", () => {
+    const rightId = useEditorStore.getState().addChildNode("root")!; // right
+    useEditorStore.getState().addChildNode("root"); // left
+    const rightId2 = useEditorStore.getState().addChildNode("root")!; // right again (3rd overall)
+
+    const state = useEditorStore.getState();
+    const r1 = state.nodes.find((n) => n.id === rightId)!;
+    const r2 = state.nodes.find((n) => n.id === rightId2)!;
+    expect(r1.position.x).toBe(r2.position.x); // same side, same horizontal offset
+    expect(r1.position.y).not.toBe(r2.position.y); // stacked, not overlapping
+  });
+
+  it("an explicit drop point (drag-to-empty-canvas) infers its side from where it landed, not the alternation rule", () => {
+    // Even though this would normally be the root's "first child -> right" case, an
+    // explicit point to the LEFT must be respected as-is.
+    const id = useEditorStore.getState().addChildNode("root", { x: -300, y: 50 })!;
+    const node = useEditorStore.getState().nodes.find((n) => n.id === id);
+    expect(node?.position).toEqual({ x: -300, y: 50 });
+  });
+});

@@ -75,4 +75,18 @@ describe("getFloatingEdgeParams", () => {
     expect(after.sourcePosition).toBe(Position.Left);
     expect(after.sx).toBeCloseTo(0);
   });
+
+  it("sourceAimPoint overrides what the source side aims at, ignoring the real target", () => {
+    // Target sits directly right, but the shared aim point (e.g. a sibling-group
+    // centroid) is up and to the left — the source exit should follow the override.
+    const withoutOverride = getFloatingEdgeParams(rectAt(0, 0), rectAt(400, 0));
+    const withOverride = getFloatingEdgeParams(rectAt(0, 0), rectAt(400, 0), { x: -500, y: -500 });
+
+    expect(withoutOverride.sourcePosition).toBe(Position.Right);
+    expect(withOverride.sourcePosition).not.toBe(Position.Right);
+    // The target side is unaffected by the override — it still aims back at the real
+    // source center, so tx/ty/targetPosition stay identical either way.
+    expect(withOverride.tx).toBeCloseTo(withoutOverride.tx);
+    expect(withOverride.targetPosition).toBe(withoutOverride.targetPosition);
+  });
 });

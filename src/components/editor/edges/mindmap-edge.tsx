@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import type { MindmapEdge as MindmapEdgeType } from "@/types/mindmap";
 import { useEditorStore } from "@/store/editor-store";
 import { getFloatingEdgeParams, type Rect } from "@/lib/mindmap/floating-edge";
+import { getSharedAnchorTarget } from "@/lib/mindmap/shared-edge-anchor";
 import { getFocusedSubtree } from "@/lib/mindmap/focus";
 import { removeLinkEdgeWithUndo } from "@/lib/mindmap/delete-with-undo";
 
@@ -34,6 +35,10 @@ export function MindmapEdge({
     const set = getFocusedSubtree(s.edges, s.focusedNodeId);
     return set ? !(set.has(source) && set.has(target)) : false;
   });
+  // When this edge shares its source with sibling edges leaving toward roughly the
+  // same side, this is their shared centroid to aim the source anchor at (see
+  // shared-edge-anchor.ts) — null for a lone edge, which just aims at its own target.
+  const sharedAimPoint = useEditorStore((s) => getSharedAnchorTarget(s.edges, s.nodes, id));
 
   // Every edge floats: each end sits on its node's border at the point facing the
   // other node, so the connection rotates around the node as either end moves —
@@ -60,7 +65,7 @@ export function MindmapEdge({
       width: targetNode.measured.width ?? 0,
       height: targetNode.measured.height ?? 0,
     };
-    const params = getFloatingEdgeParams(sourceRect, targetRect);
+    const params = getFloatingEdgeParams(sourceRect, targetRect, sharedAimPoint ?? undefined);
     pathParams = {
       sourceX: params.sx,
       sourceY: params.sy,

@@ -5,7 +5,8 @@ import type { NodeChange, EdgeChange } from "@xyflow/react";
 
 import type { MindmapNode, MindmapEdge, MindmapNodeData, AttachmentRecord } from "@/types/mindmap";
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
-import { getParentId, getChildIds, getSubtreeIds, isHierarchyEdge } from "@/lib/mindmap/tree-utils";
+import { getParentId, getSubtreeIds, isHierarchyEdge } from "@/lib/mindmap/tree-utils";
+import { pickChildSide, countChildrenOnSide, type BranchSide } from "@/lib/mindmap/branch-side";
 import { resolveNewNodeColor, resolveNewRootColor } from "@/lib/mindmap/color";
 import { getLastCanvasPoint } from "@/lib/mindmap/canvas-cursor";
 import { useHistoryStore } from "@/store/history-store";
@@ -153,12 +154,13 @@ interface EditorState {
 // Exported for the unit tests that assert cursor-relative placement.
 export const ROOT_AT_CURSOR_OFFSET = { x: 60, y: 21 };
 
-function computeChildPosition(parent: MindmapNode, existingChildCount: number) {
+function computeChildPosition(parent: MindmapNode, side: BranchSide, siblingsOnSameSide: number) {
   const horizontalGap = 240;
   const verticalGap = 70;
+  const sign = side === "right" ? 1 : -1;
   return {
-    x: parent.position.x + horizontalGap,
-    y: parent.position.y + existingChildCount * verticalGap,
+    x: parent.position.x + sign * horizontalGap,
+    y: parent.position.y + siblingsOnSameSide * verticalGap,
   };
 }
 
@@ -409,12 +411,19 @@ export const useEditorStore = create<EditorState>()(
 
       commitHistory(state.nodes, state.edges);
 
-      const siblingCount = getChildIds(state.edges, parentId).length;
+      // `at` (an explicit drop point, e.g. drag-to-empty-canvas) infers its own side
+      // from where it actually landed rather than the usual alternate/inherit rule —
+      // it should never fight the position the user just chose. Otherwise: a root's
+      // direct children alternate left/right; a deeper node's children all continue
+      // the same direction its own branch already established.
+      const side: BranchSide = at ? (at.x < parent.position.x ? "left" : "right")
+        : pickChildSide(state.nodes, state.edges, parentId);
+      const siblingsOnSameSide = countChildrenOnSide(state.nodes, state.edges, parentId, side);
       const id = generateNodeId();
       const newNode: MindmapNode = {
         id,
         type: "mindmapNode",
-        position: at ?? computeChildPosition(parent, siblingCount),
+        position: at ?? computeChildPosition(parent, side, siblingsOnSameSide),
         data: {
           label: "",
           color: resolveNewNodeColor(state.nodes, state.edges, parentId),

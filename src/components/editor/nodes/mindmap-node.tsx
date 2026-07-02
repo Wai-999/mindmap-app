@@ -278,12 +278,17 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   }
 
   const isDiamond = shape === "diamond";
+  // Same explicit-dimensions convention as the image node above: undefined until the
+  // card is manually resized (NodeResizer below), content-sized via the S/M/L preset
+  // up to that point. Once resized, the preset's own min/max-width bounds no longer
+  // apply — the whole point of dragging a handle is to go past them either way.
+  const hasExplicitSize = explicitWidth != null && explicitHeight != null;
 
   return (
     <div
       className={cn(
         "group relative text-card-foreground shadow-sm transition-shadow",
-        SIZE_WIDTH[size],
+        hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
         SIZE_TEXT[size],
         isDiamond
           ? "bg-transparent px-9 py-7"
@@ -428,6 +433,21 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             <ChevronRight className="size-3.5 -rotate-90" />
           )}
         </button>
+      )}
+
+      {/* Same treatment as the image node's resizer above: rendered LAST so its
+          corner handles sit above the connection strips (which would otherwise
+          intercept a corner drag as a new connection instead of a resize). No
+          keepAspectRatio — unlike an image, a text card's width and height are
+          independent. */}
+      {selected && !readOnly && (
+        <NodeResizer
+          color={color ?? "var(--primary)"}
+          minWidth={100}
+          minHeight={44}
+          handleStyle={{ width: 12, height: 12, borderRadius: 3, zIndex: 20 }}
+          onResizeStart={commitBeforeDrag}
+        />
       )}
     </div>
   );

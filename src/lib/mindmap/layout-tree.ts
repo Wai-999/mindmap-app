@@ -1,7 +1,8 @@
 import { tree as d3Tree, stratify } from "d3-hierarchy";
 
 import type { MindmapNode, MindmapEdge } from "@/types/mindmap";
-import { getParentId, getRootNodes, getSubtreeIds } from "@/lib/mindmap/tree-utils";
+import { getParentId, getChildIds, getRootNodes, getSubtreeIds } from "@/lib/mindmap/tree-utils";
+import { getNodeBranchSide } from "@/lib/mindmap/branch-side";
 
 export type LayoutDirection = "LR" | "TB";
 export type NodePositions = Record<string, { x: number; y: number }>;
@@ -45,6 +46,65 @@ function layoutOneTree(
   return { positions, breadthMin, breadthMax };
 }
 
+// LR only: lays out a root's right-side children and left-side children as two
+// independent single-direction trees (layoutOneTree above), mirrors the left one, and
+// recenters both on the root's own breadth position before combining — so Tidy Layout
+// preserves whichever side each direct child is already on (from the smart
+// auto-placement add-child gesture, or from manually dragging one across) instead of
+// silently collapsing every child back onto the right, which used to undo that
+// structure every time. Falls back to the plain single-direction layout when the root
+// has no left children at all — the overwhelmingly common case, and one extra
+// full layoutOneTree call isn't worth paying for when it wouldn't change anything.
+function layoutOneTreeLR(
+  rootId: string,
+  subNodes: MindmapNode[],
+  subEdges: MindmapEdge[],
+): { positions: NodePositions; breadthMin: number; breadthMax: number } {
+  const directChildIds = getChildIds(subEdges, rootId);
+  const leftChildIds = directChildIds.filter(
+    (id) => getNodeBranchSide(subNodes, subEdges, id) === "left",
+  );
+  if (leftChildIds.length === 0) return layoutOneTree(subNodes, subEdges, "LR");
+
+  const rightChildIds = directChildIds.filter((id) => !leftChildIds.includes(id));
+  const rightIds = new Set([rootId, ...rightChildIds.flatMap((id) => getSubtreeIds(subEdges, id))]);
+  const leftIds = new Set([rootId, ...leftChildIds.flatMap((id) => getSubtreeIds(subEdges, id))]);
+
+  const right = layoutOneTree(
+    subNodes.filter((n) => rightIds.has(n.id)),
+    subEdges.filter((e) => rightIds.has(e.source) && rightIds.has(e.target)),
+    "LR",
+  );
+  const left = layoutOneTree(
+    subNodes.filter((n) => leftIds.has(n.id)),
+    subEdges.filter((e) => leftIds.has(e.source) && leftIds.has(e.target)),
+    "LR",
+  );
+
+  const rootRightY = right.positions[rootId].y;
+  const rootLeftY = left.positions[rootId].y;
+
+  const positions: NodePositions = {};
+  let breadthMin = Infinity;
+  let breadthMax = -Infinity;
+
+  for (const [id, pos] of Object.entries(right.positions)) {
+    const y = pos.y - rootRightY; // recenter so the root sits at breadth 0
+    positions[id] = { x: pos.x, y };
+    breadthMin = Math.min(breadthMin, y);
+    breadthMax = Math.max(breadthMax, y);
+  }
+  for (const [id, pos] of Object.entries(left.positions)) {
+    if (id === rootId) continue; // already placed from the right pass above
+    const y = pos.y - rootLeftY;
+    positions[id] = { x: -pos.x, y }; // mirror the depth axis to flip to the left
+    breadthMin = Math.min(breadthMin, y);
+    breadthMax = Math.max(breadthMax, y);
+  }
+
+  return { positions, breadthMin, breadthMax };
+}
+
 // Reingold–Tilford tree layout (d3-hierarchy). Mindmaps are a forest of strict trees
 // (multiple independent primary ideas are allowed), so each root's subtree is laid out
 // independently with the same single-tree primitive, then the trees are stacked along
@@ -65,11 +125,10 @@ export function computeTreeLayout(
     const subNodes = nodes.filter((n) => ids.has(n.id));
     const subEdges = edges.filter((e) => ids.has(e.source) && ids.has(e.target));
 
-    const { positions: subPositions, breadthMin, breadthMax } = layoutOneTree(
-      subNodes,
-      subEdges,
-      direction,
-    );
+    const { positions: subPositions, breadthMin, breadthMax } =
+      direction === "LR"
+        ? layoutOneTreeLR(root.id, subNodes, subEdges)
+        : layoutOneTree(subNodes, subEdges, direction);
 
     // The breadth axis is `y` for LR (siblings spread vertically) and `x` for TB
     // (siblings spread horizontally) — offset only that axis so every tree's root

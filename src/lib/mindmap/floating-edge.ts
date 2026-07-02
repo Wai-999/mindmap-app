@@ -65,8 +65,19 @@ function center(rect: Rect): Point {
 // Both endpoints of a free-form link edge: each sits on its own node's border, facing
 // the other node's center — so the connection visually rotates around the node as
 // either end is dragged, instead of staying pinned to one fixed side.
-export function getFloatingEdgeParams(source: Rect, target: Rect): FloatingEdgeParams {
-  const sourcePoint = getRectIntersection(source, center(target));
+//
+// sourceAimPoint overrides what the SOURCE side aims at (normally the target's own
+// center) — used when several sibling edges leave the same node toward roughly the
+// same side, so they all aim at their group's shared centroid instead of each
+// competing for its own slightly different exit point on a small parent (see
+// shared-edge-anchor.ts). The target side is unaffected: it always aims back at the
+// real source center, since a target only has ever the one incoming edge in practice.
+export function getFloatingEdgeParams(
+  source: Rect,
+  target: Rect,
+  sourceAimPoint?: Point,
+): FloatingEdgeParams {
+  const sourcePoint = getRectIntersection(source, sourceAimPoint ?? center(target));
   const targetPoint = getRectIntersection(target, center(source));
 
   return {
