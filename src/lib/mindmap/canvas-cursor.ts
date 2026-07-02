@@ -18,3 +18,23 @@ export function getLastCanvasPoint(): { x: number; y: number } | null {
 export function clearLastCanvasPoint() {
   lastCanvasPoint = null;
 }
+
+// Screen-space (clientX/clientY — NOT flow coordinates) point of the double-click
+// that started editing a node's label. Read once by mindmap-node.tsx to place the
+// text cursor exactly where the user clicked via caretRangeFromPoint, instead of the
+// browser's default caret placement for a freshly-focused contentEditable (which
+// ignores where the triggering click actually landed). consumeEditClickPoint reads
+// and clears it in one step, so a later keyboard-triggered edit (Enter on a selected
+// node, with no click at all) falls back to default placement rather than reusing a
+// stale position from an unrelated earlier click.
+let editClickPoint: { x: number; y: number } | null = null;
+
+export function setEditClickPoint(point: { x: number; y: number }) {
+  editClickPoint = point;
+}
+
+export function consumeEditClickPoint(): { x: number; y: number } | null {
+  const point = editClickPoint;
+  editClickPoint = null;
+  return point;
+}

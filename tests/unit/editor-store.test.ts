@@ -346,3 +346,76 @@ describe("editor-store reconnectLinkEdge (dragging an existing connection's end)
     expect(edge?.target).toBe("b");
   });
 });
+
+describe("editor-store updateNodeShape", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+  });
+
+  it("sets a node's shape", () => {
+    useEditorStore.getState().updateNodeShape("root", "diamond");
+    expect(useEditorStore.getState().nodes[0].data.shape).toBe("diamond");
+  });
+
+  it("clears back to the default (rounded) by setting undefined", () => {
+    useEditorStore.getState().updateNodeShape("root", "pill");
+    useEditorStore.getState().updateNodeShape("root", undefined);
+    expect(useEditorStore.getState().nodes[0].data.shape).toBeUndefined();
+  });
+
+  it("does nothing when read-only", () => {
+    load([makeNode("root")], [], true);
+    useEditorStore.getState().updateNodeShape("root", "diamond");
+    expect(useEditorStore.getState().nodes[0].data.shape).toBeUndefined();
+  });
+
+  it("is one Undo away", () => {
+    useEditorStore.getState().updateNodeShape("root", "rectangle");
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes[0].data.shape).toBeUndefined();
+  });
+});
+
+describe("editor-store selectNode / selectEdge mutual exclusivity", () => {
+  beforeEach(() => {
+    load([makeNode("root"), makeNode("a"), makeNode("b")], [makeEdge("root", "a")]);
+  });
+
+  it("selecting a node clears an edge selection", () => {
+    useEditorStore.getState().selectEdge("some-edge");
+    useEditorStore.getState().selectNode("a");
+
+    const state = useEditorStore.getState();
+    expect(state.selectedNodeId).toBe("a");
+    expect(state.selectedEdgeId).toBeNull();
+  });
+
+  it("selecting an edge clears a node selection", () => {
+    useEditorStore.getState().selectNode("a");
+    useEditorStore.getState().selectEdge("some-edge");
+
+    const state = useEditorStore.getState();
+    expect(state.selectedEdgeId).toBe("some-edge");
+    expect(state.selectedNodeId).toBeNull();
+  });
+
+  it("deselecting a node (null) also clears the edge selection", () => {
+    useEditorStore.getState().selectEdge("some-edge");
+    useEditorStore.getState().selectNode(null);
+    expect(useEditorStore.getState().selectedEdgeId).toBeNull();
+  });
+
+  it("removeLinkEdge clears the selection if the removed edge was selected", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "b")!;
+    useEditorStore.getState().selectEdge(id);
+    useEditorStore.getState().removeLinkEdge(id);
+    expect(useEditorStore.getState().selectedEdgeId).toBeNull();
+  });
+
+  it("deleteNodeAndSubtree clears the edge selection if the selected edge touched the deleted node", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "b")!;
+    useEditorStore.getState().selectEdge(id);
+    useEditorStore.getState().deleteNodeAndSubtree("b");
+    expect(useEditorStore.getState().selectedEdgeId).toBeNull();
+  });
+});

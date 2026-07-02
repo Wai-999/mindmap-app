@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Paperclip, Upload, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { useShallow } from "zustand/react/shallow";
 
 import { useEditorStore } from "@/store/editor-store";
 import { Button } from "@/components/ui/button";
@@ -17,14 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-
-interface AttachmentRecord {
-  id: string;
-  name: string;
-  url: string;
-  size: number;
-  mimeType: string;
-}
+import type { AttachmentRecord } from "@/types/mindmap";
 
 interface NodeInspectorPanelProps {
   // Base API path for this mindmap — /api/mindmaps/{id} for the owner, or
@@ -42,10 +36,17 @@ export function NodeInspectorPanel({ endpoint }: NodeInspectorPanelProps) {
   const setInspectorNode = useEditorStore((s) => s.setInspectorNode);
   const updateNodeNote = useEditorStore((s) => s.updateNodeNote);
   const updateNodeTask = useEditorStore((s) => s.updateNodeTask);
+  // Filtered from the mindmap-wide list fetched once by useFetchAttachments (see
+  // components/editor/use-attachments.ts) rather than its own per-node fetch — one
+  // shared source of truth, since mindmap-node.tsx's thumbnail needs the same data.
+  const attachments = useEditorStore(
+    useShallow((s) => s.attachments.filter((a) => a.nodeId === nodeId)),
+  );
+  const addAttachment = useEditorStore((s) => s.addAttachment);
+  const removeAttachmentRecord = useEditorStore((s) => s.removeAttachmentRecord);
 
   const [noteDraft, setNoteDraft] = useState("");
   const [previewNote, setPreviewNote] = useState(false);
-  const [attachments, setAttachments] = useState<AttachmentRecord[]>([]);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -56,14 +57,6 @@ export function NodeInspectorPanel({ endpoint }: NodeInspectorPanelProps) {
     // (note is only committed back to the store on blur, see the Textarea below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId]);
-
-  useEffect(() => {
-    if (!nodeId) return;
-    fetch(`${endpoint}/attachments?nodeId=${nodeId}`)
-      .then((res) => (res.ok ? res.json() : { attachments: [] }))
-      .then((data: { attachments?: AttachmentRecord[] }) => setAttachments(data.attachments ?? []))
-      .catch(() => setAttachments([]));
-  }, [nodeId, endpoint]);
 
   if (!nodeId || !node) return null;
 
@@ -76,7 +69,9 @@ export function NodeInspectorPanel({ endpoint }: NodeInspectorPanelProps) {
       const res = await fetch(`${endpoint}/attachments`, { method: "POST", body: formData });
       if (res.ok) {
         const data = (await res.json()) as { attachment: AttachmentRecord };
-        setAttachments((prev) => [...prev, data.attachment]);
+        // Same endpoint-scoped rewrite as useFetchAttachments — the server always
+        // returns the owner-authenticated path, which a share-link visitor can't use.
+        addAttachment({ ...data.attachment, url: `${endpoint}/attachments/${data.attachment.id}` });
       }
     } finally {
       setUploading(false);
@@ -84,7 +79,7 @@ export function NodeInspectorPanel({ endpoint }: NodeInspectorPanelProps) {
   }
 
   async function handleDelete(attachmentId: string) {
-    setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+    removeAttachmentRecord(attachmentId);
     await fetch(`${endpoint}/attachments/${attachmentId}`, { method: "DELETE" }).catch(() => undefined);
   }
 

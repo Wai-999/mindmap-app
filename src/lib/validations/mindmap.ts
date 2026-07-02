@@ -6,11 +6,18 @@ export const taskSchema = z.object({
   priority: z.enum(["low", "medium", "high"]).optional(),
 });
 
+// Absent/"rounded" is the original mindmap look (rounded rectangle). The other three
+// cover standard flowchart notation — rectangle (process), pill (start/end
+// terminator), diamond (decision) — without forcing that vocabulary on anyone who
+// just wants plain mind-mapping.
+export const nodeShapeSchema = z.enum(["rounded", "rectangle", "pill", "diamond"]);
+
 export const nodeDataSchema = z.object({
   label: z.string().max(2000),
   color: z.string().max(20).optional(),
   icon: z.string().max(50).optional(),
   collapsed: z.boolean().optional(),
+  shape: nodeShapeSchema.optional(),
   // Markdown-capable free text, rendered via react-markdown in the inspector panel
   // and presentation mode. Capped for the same DoS-hardening reason array sizes are.
   note: z.string().max(10_000).optional(),

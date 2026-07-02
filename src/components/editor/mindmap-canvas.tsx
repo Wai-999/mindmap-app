@@ -12,6 +12,7 @@ import {
 } from "@xyflow/react";
 import type {
   NodeMouseHandler,
+  EdgeMouseHandler,
   Connection,
   IsValidConnection,
   OnConnectEnd,
@@ -22,8 +23,9 @@ import "@xyflow/react/dist/style.css";
 import { useEditorStore } from "@/store/editor-store";
 import { MindmapNode } from "@/components/editor/nodes/mindmap-node";
 import { MindmapEdge } from "@/components/editor/edges/mindmap-edge";
+import type { MindmapEdge as MindmapEdgeType } from "@/types/mindmap";
 import { getHiddenIds, filterVisible, isHierarchyEdge } from "@/lib/mindmap/tree-utils";
-import { setLastCanvasPoint, clearLastCanvasPoint } from "@/lib/mindmap/canvas-cursor";
+import { setLastCanvasPoint, clearLastCanvasPoint, setEditClickPoint } from "@/lib/mindmap/canvas-cursor";
 
 const nodeTypes = { mindmapNode: MindmapNode };
 const edgeTypes = { mindmapEdge: MindmapEdge };
@@ -35,6 +37,7 @@ export function MindmapCanvas() {
   const onNodesChange = useEditorStore((s) => s.onNodesChange);
   const onEdgesChange = useEditorStore((s) => s.onEdgesChange);
   const selectNode = useEditorStore((s) => s.selectNode);
+  const selectEdge = useEditorStore((s) => s.selectEdge);
   const setEditingNode = useEditorStore((s) => s.setEditingNode);
   const commitBeforeDrag = useEditorStore((s) => s.commitBeforeDrag);
   const addLinkEdge = useEditorStore((s) => s.addLinkEdge);
@@ -84,7 +87,18 @@ export function MindmapCanvas() {
       // different node — without opening that up for the structural tree edges,
       // which only ever change through the store's own actions. Per-edge
       // `reconnectable` overrides the canvas's global `edgesReconnectable={false}`.
-      return { ...e, reconnectable: true };
+      // "drop" only ever exists as a handle while a connection drag is in progress
+      // (mindmap-node.tsx's whole-node drop target) — a handful of mindmaps saved
+      // before handleConnect's guard against persisting it still have it stored,
+      // which makes React Flow log a "couldn't find handle" warning on every
+      // render (harmless for link edges, since floating-edge math below ignores
+      // sourceHandle/targetHandle entirely, but still worth clearing on sight).
+      return {
+        ...e,
+        sourceHandle: e.sourceHandle === "drop" ? null : e.sourceHandle,
+        targetHandle: e.targetHandle === "drop" ? null : e.targetHandle,
+        reconnectable: true,
+      };
     });
     return { nodes: vn, edges: normalizedEdges };
   }, [nodes, edges]);
@@ -141,10 +155,27 @@ export function MindmapCanvas() {
     [selectNode],
   );
 
+  // Only link edges are selectable this way — hierarchy edges have no click-driven
+  // action at all (they only change via the structural store actions), so clicking
+  // one is a no-op rather than clearing whatever else was selected.
+  const handleEdgeClick: EdgeMouseHandler<MindmapEdgeType> = useCallback(
+    (event, edge) => {
+      if (isHierarchyEdge(edge)) return;
+      event.stopPropagation();
+      selectEdge(edge.id);
+    },
+    [selectEdge],
+  );
+
   const handleNodeDoubleClick: NodeMouseHandler = useCallback(
     (event, node) => {
       if (readOnly) return;
       event.stopPropagation();
+      // Recorded before the contentEditable even mounts (isEditing flips true a
+      // render later) so mindmap-node.tsx can place the caret exactly where this
+      // click landed once it does — see canvas-cursor.ts for why this needs to be
+      // consumed once rather than just read.
+      setEditClickPoint({ x: event.clientX, y: event.clientY });
       setEditingNode(node.id);
     },
     [readOnly, setEditingNode],
@@ -160,6 +191,7 @@ export function MindmapCanvas() {
       onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
       onNodeDoubleClick={handleNodeDoubleClick}
+      onEdgeClick={handleEdgeClick}
       onNodeDragStart={commitBeforeDrag}
       onPaneClick={handlePaneClick}
       onPaneMouseMove={handlePaneMouseMove}

@@ -3,11 +3,13 @@ import type { z } from "zod";
 
 import type {
   nodeDataSchema,
+  nodeShapeSchema,
   edgeDataSchema,
   mindmapContentSchema,
 } from "@/lib/validations/mindmap";
 
 export type MindmapNodeData = z.infer<typeof nodeDataSchema>;
+export type NodeShape = z.infer<typeof nodeShapeSchema>;
 export type MindmapEdgeData = z.infer<typeof edgeDataSchema>;
 
 export type MindmapNode = Node<MindmapNodeData, "mindmapNode">;
@@ -33,4 +35,13 @@ export interface FolderSummary {
 export interface TagSummary {
   id: string;
   name: string;
+}
+
+export interface AttachmentRecord {
+  id: string;
+  nodeId: string;
+  name: string;
+  url: string;
+  size: number;
+  mimeType: string;
 }

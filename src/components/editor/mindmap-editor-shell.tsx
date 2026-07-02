@@ -7,6 +7,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { useEditorStore } from "@/store/editor-store";
 import { initAutosave } from "@/store/autosave";
 import { useKeyboardShortcuts } from "@/components/editor/keyboard/use-keyboard-shortcuts";
+import { useFetchAttachments } from "@/components/editor/use-attachments";
 import { EditorHeader } from "@/components/editor/editor-header";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
@@ -64,6 +65,7 @@ export function MindmapEditorShell({
   }, []);
 
   useKeyboardShortcuts(`/api/mindmaps/${mindmap.id}`);
+  useFetchAttachments(`/api/mindmaps/${mindmap.id}`, mindmap.id);
 
   // Local, not store state — nothing outside this shell needs to know which view is
   // showing. ReactFlowProvider stays mounted either way so canvas viewport/zoom state

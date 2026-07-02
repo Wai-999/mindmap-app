@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 import { useEditorStore } from "@/store/editor-store";
 import { forceSave } from "@/store/autosave";
-import { deleteNodeWithUndo } from "@/lib/mindmap/delete-with-undo";
+import { deleteNodeWithUndo, removeLinkEdgeWithUndo } from "@/lib/mindmap/delete-with-undo";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -40,6 +40,12 @@ export function useKeyboardShortcuts(endpoint: string) {
       }
 
       if (editing) return;
+
+      if ((e.key === "Delete" || e.key === "Backspace") && store.selectedEdgeId) {
+        e.preventDefault();
+        removeLinkEdgeWithUndo(store.selectedEdgeId);
+        return;
+      }
 
       const selectedId = store.selectedNodeId;
       if (!selectedId) return;

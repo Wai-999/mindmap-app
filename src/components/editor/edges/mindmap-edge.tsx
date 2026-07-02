@@ -22,6 +22,7 @@ export function MindmapEdge({
 }: EdgeProps<MindmapEdgeType>) {
   const isLink = data?.kind === "link";
   const readOnly = useEditorStore((s) => s.readOnly);
+  const isSelected = useEditorStore((s) => s.selectedEdgeId === id);
   const color = useEditorStore(
     (s) => s.nodes.find((n) => n.id === source)?.data.color ?? "var(--muted-foreground)",
   );
@@ -68,11 +69,20 @@ export function MindmapEdge({
         path={edgePath}
         style={
           isLink
-            ? { stroke: "var(--muted-foreground)", strokeWidth: 2, strokeDasharray: "6 4" }
+            ? {
+                stroke: isSelected ? "var(--primary)" : "var(--muted-foreground)",
+                strokeWidth: isSelected ? 2.5 : 2,
+                strokeDasharray: "6 4",
+                cursor: "pointer",
+              }
             : { stroke: color, strokeWidth: 2.5 }
         }
       />
-      {isLink && !readOnly && (
+      {/* Delete only surfaces once a link is clicked, instead of every link
+          permanently showing its own × — several crossing or nearby connections
+          used to stack their buttons on top of each other; only one edge can ever
+          be selected at a time, so this can't happen anymore. */}
+      {isLink && isSelected && !readOnly && (
         <EdgeLabelRenderer>
           <button
             type="button"

@@ -7,6 +7,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { useEditorStore } from "@/store/editor-store";
 import { initAutosave } from "@/store/autosave";
 import { useKeyboardShortcuts } from "@/components/editor/keyboard/use-keyboard-shortcuts";
+import { useFetchAttachments } from "@/components/editor/use-attachments";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
 import { NodeInspectorPanel } from "@/components/editor/inspector/node-inspector-panel";
@@ -69,6 +70,7 @@ export function SharedMindmapViewer({
   }, []);
 
   useKeyboardShortcuts(endpoint);
+  useFetchAttachments(endpoint, mindmap.id);
 
   // A logged-out visitor has no account name — a stable-per-tab guest label is
   // enough for presence avatars/rings to be distinguishable from each other.

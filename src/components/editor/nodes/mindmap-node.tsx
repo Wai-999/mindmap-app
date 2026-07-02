@@ -8,7 +8,41 @@ import type { MindmapNode as MindmapNodeType } from "@/types/mindmap";
 import { useEditorStore } from "@/store/editor-store";
 import { getChildIds, getDescendantIds } from "@/lib/mindmap/tree-utils";
 import { useRemoteSelectors } from "@/components/editor/collab/use-remote-selectors";
+import { consumeEditClickPoint } from "@/lib/mindmap/canvas-cursor";
 import { cn } from "@/lib/utils";
+
+// A freshly-focused contentEditable places its caret at the browser's own default
+// spot (typically the very start), ignoring wherever the double-click that opened
+// editing actually landed — jarring when editing the middle of a longer label.
+// Reproduces the click here instead, once the element is actually focused and
+// consumeEditClickPoint has a point to give (nothing to do for a keyboard-triggered
+// edit, e.g. Enter on a selected node, which never recorded one). Both APIs are
+// declared non-optional in this project's lib.dom.d.ts, but no engine ships both —
+// Chromium/WebKit have caretRangeFromPoint, Firefox has the standards-track
+// caretPositionFromPoint — hence the runtime `typeof` checks rather than trusting
+// the types.
+function placeCaretAtClickPoint(el: HTMLElement) {
+  const point = consumeEditClickPoint();
+  if (!point) return;
+
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  if (typeof document.caretRangeFromPoint === "function") {
+    const range = document.caretRangeFromPoint(point.x, point.y);
+    if (!range || !el.contains(range.startContainer)) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  } else if (typeof document.caretPositionFromPoint === "function") {
+    const pos = document.caretPositionFromPoint(point.x, point.y);
+    if (!pos || !el.contains(pos.offsetNode)) return;
+    const range = document.createRange();
+    range.setStart(pos.offsetNode, pos.offset);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+}
 
 // One invisible ~10px strip per side, together covering the node's whole border.
 // Inline styles (not classes) because they must override React Flow's default handle
@@ -38,8 +72,15 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const label = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.label ?? "");
   const color = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.color);
   const collapsed = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.collapsed ?? false);
+  const shape = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.shape ?? "rounded");
   const note = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.note);
   const task = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.task);
+  // First image attachment only — a small cover thumbnail, not a gallery, matching
+  // the note/task indicators' "presence, not full content" treatment. The full list
+  // (with the rest, if any) stays in the inspector panel.
+  const imageUrl = useEditorStore(
+    (s) => s.attachments.find((a) => a.nodeId === id && a.mimeType.startsWith("image/"))?.url,
+  );
   const childCount = useEditorStore((s) => getChildIds(s.edges, id).length);
   const hiddenDescendantCount = useEditorStore((s) =>
     collapsed ? getDescendantIds(s.edges, id).length : 0,
@@ -76,8 +117,11 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     let attempts = 0;
     const tryFocus = () => {
       el.focus();
-      if (document.activeElement === el || attempts++ >= 60) return;
-      frame = requestAnimationFrame(tryFocus);
+      if (document.activeElement !== el) {
+        if (attempts++ < 60) frame = requestAnimationFrame(tryFocus);
+        return;
+      }
+      placeCaretAtClickPoint(el);
     };
     tryFocus();
     return () => cancelAnimationFrame(frame);
@@ -89,14 +133,24 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     setEditingNode(null);
   }
 
+  const isDiamond = shape === "diamond";
+
   return (
     <div
       className={cn(
-        "group relative min-w-[120px] max-w-[280px] rounded-xl border-2 bg-card px-4 py-2.5 text-card-foreground shadow-sm transition-shadow",
+        "group relative min-w-[120px] max-w-[280px] text-card-foreground shadow-sm transition-shadow",
+        isDiamond
+          ? "bg-transparent px-9 py-7"
+          : cn(
+              "border-2 bg-card px-4 py-2.5",
+              shape === "rectangle" ? "rounded-none" : shape === "pill" ? "rounded-full" : "rounded-xl",
+            ),
         selected ? "shadow-md" : "hover:shadow-md",
       )}
       style={{
-        borderColor: selected ? (color ?? "var(--primary)") : "transparent",
+        // The diamond's outline is drawn by its own SVG polygon below instead —
+        // this div stays borderless so no rectangular edge shows through its points.
+        borderColor: isDiamond ? undefined : selected ? (color ?? "var(--primary)") : "transparent",
         // Ring sits outside the node's own border (a card-colored gap, then the
         // collaborator's color) so local selection and remote selection never visually
         // collide, even when both are true at once.
@@ -105,6 +159,26 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           : undefined,
       }}
     >
+      {isDiamond && (
+        // A rectangular border can't follow a diamond's diagonal edges, so the
+        // shape/fill/stroke are drawn here instead, sized to the card's own
+        // bounding box — the actual content (and the connection handles below,
+        // which anchor to that same box) stays in normal, unrotated layout on top.
+        <svg
+          className="pointer-events-none absolute inset-0 -z-10 size-full"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+        >
+          <polygon
+            points="50,3 97,50 50,97 3,50"
+            className="fill-card"
+            stroke={selected ? (color ?? "var(--primary)") : "transparent"}
+            strokeWidth={3}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      )}
+
       {/* Invisible strips covering the node's whole border, one per side, so a
           free-form link drag can start from ANY point on the perimeter (crosshair
           cursor gives the affordance) — the interior stays free for dragging the node
@@ -141,6 +215,29 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           }}
         />
       )}
+
+      {imageUrl &&
+        (shape === "rounded" || shape === "rectangle" ? (
+          // Bleeds to the card's own edges (negative margin cancels the card's own
+          // padding) and nests inside its rounding — 10px vs. the card's 12px
+          // (rounded-xl) accounts for the 2px border between the two. Private,
+          // per-node upload from local storage — never optimizable via next/image's
+          // remote loader, hence plain <img>.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt=""
+            className={cn(
+              "-mx-4 -mt-2.5 mb-2 h-24 w-[calc(100%+2rem)] object-cover",
+              shape === "rectangle" ? "rounded-none" : "rounded-t-[10px]",
+            )}
+          />
+        ) : (
+          // Pill/diamond outlines don't have a flat top edge to bleed a rectangular
+          // image into — an inset thumbnail avoids the two shapes visibly clashing.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="" className="mb-2 h-16 w-full rounded-md object-cover" />
+        ))}
 
       <div className="flex items-center gap-2">
         <span

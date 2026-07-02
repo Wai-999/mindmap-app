@@ -3,7 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { applyNodeChanges, applyEdgeChanges } from "@xyflow/react";
 import type { NodeChange, EdgeChange } from "@xyflow/react";
 
-import type { MindmapNode, MindmapEdge, MindmapNodeData } from "@/types/mindmap";
+import type { MindmapNode, MindmapEdge, MindmapNodeData, AttachmentRecord } from "@/types/mindmap";
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
 import { getParentId, getChildIds, getSubtreeIds, isHierarchyEdge } from "@/lib/mindmap/tree-utils";
 import { resolveNewNodeColor, resolveNewRootColor } from "@/lib/mindmap/color";
@@ -18,12 +18,23 @@ interface EditorState {
   nodes: MindmapNode[];
   edges: MindmapEdge[];
   selectedNodeId: string | null;
+  // Selected link edge, if any — mutually exclusive with selectedNodeId (selecting
+  // one clears the other). Only ever a link edge; hierarchy edges aren't selectable
+  // through this, since they only change via the structural actions above.
+  selectedEdgeId: string | null;
   editingNodeId: string | null;
   // Which node's inspector panel (note/task/attachments) is open, if any — a view
   // toggle like editingNodeId, not content, so it's not part of undo/dirty tracking.
   inspectorNodeId: string | null;
   // True for a share link with VIEW permission — canvas renders but nothing mutates.
   readOnly: boolean;
+
+  // All attachments for the current mindmap (every node's, flat) — fetched once on
+  // load rather than per-node, so any node can cheaply look up its own image
+  // thumbnail without a chatty per-node request. Not history/dirty-tracked: uploads
+  // and deletes persist to the server immediately, independent of the content
+  // autosave cycle (same reasoning as readOnly/saveStatus above).
+  attachments: AttachmentRecord[];
 
   // Bumped by every content-affecting mutation (not selection/editing-focus changes).
   // autosave.ts subscribes to this specifically so it can debounce "time since the
@@ -47,11 +58,13 @@ interface EditorState {
   commitBeforeDrag: () => void;
 
   selectNode: (id: string | null) => void;
+  selectEdge: (id: string | null) => void;
   setEditingNode: (id: string | null) => void;
   setInspectorNode: (id: string | null) => void;
   setTitle: (title: string) => void;
   updateNodeLabel: (id: string, label: string) => void;
   updateNodeColor: (id: string, color: string) => void;
+  updateNodeShape: (id: string, shape: MindmapNodeData["shape"]) => void;
   updateNodeNote: (id: string, note: string) => void;
   updateNodeTask: (id: string, task: MindmapNodeData["task"]) => void;
   toggleCollapsed: (id: string) => void;
@@ -92,6 +105,10 @@ interface EditorState {
   undo: () => void;
   redo: () => void;
 
+  setAttachments: (attachments: AttachmentRecord[]) => void;
+  addAttachment: (attachment: AttachmentRecord) => void;
+  removeAttachmentRecord: (attachmentId: string) => void;
+
   markSaving: () => void;
   markSaved: (updatedAt: string, savedRevision: number) => void;
   markSaveError: () => void;
@@ -122,9 +139,11 @@ export const useEditorStore = create<EditorState>()(
     nodes: [],
     edges: [],
     selectedNodeId: null,
+    selectedEdgeId: null,
     editingNodeId: null,
     inspectorNodeId: null,
     readOnly: false,
+    attachments: [],
     revision: 0,
     dirty: false,
     saveStatus: "idle",
@@ -138,9 +157,11 @@ export const useEditorStore = create<EditorState>()(
         nodes,
         edges,
         selectedNodeId: null,
+        selectedEdgeId: null,
         editingNodeId: null,
         inspectorNodeId: null,
         readOnly,
+        attachments: [],
         revision: 0,
         dirty: false,
         saveStatus: "idle",
@@ -170,7 +191,10 @@ export const useEditorStore = create<EditorState>()(
       commitHistory(state.nodes, state.edges);
     },
 
-    selectNode: (id) => set({ selectedNodeId: id }),
+    // Each of these always clears the other, including on deselect (id === null) —
+    // clicking empty canvas should drop both a node and an edge selection alike.
+    selectNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
+    selectEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
     setEditingNode: (id) => {
       if (get().readOnly) return;
       set({ editingNodeId: id });
@@ -207,6 +231,20 @@ export const useEditorStore = create<EditorState>()(
       commitHistory(state.nodes, state.edges);
       set((s) => ({
         nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, color } } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    updateNodeShape: (id, shape) => {
+      const state = get();
+      if (state.readOnly) return;
+      const target = state.nodes.find((n) => n.id === id);
+      if (!target || target.data.shape === shape) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, shape } } : n)),
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -384,6 +422,7 @@ export const useEditorStore = create<EditorState>()(
       commitHistory(state.nodes, state.edges);
       set((s) => ({
         edges: s.edges.filter((e) => e.id !== edgeId),
+        selectedEdgeId: s.selectedEdgeId === edgeId ? null : s.selectedEdgeId,
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -428,10 +467,16 @@ export const useEditorStore = create<EditorState>()(
       commitHistory(state.nodes, state.edges);
 
       const idsToRemove = new Set(getSubtreeIds(state.edges, nodeId));
+      const survivingEdgeIds = new Set(
+        state.edges
+          .filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target))
+          .map((e) => e.id),
+      );
       set((s) => ({
         nodes: s.nodes.filter((n) => !idsToRemove.has(n.id)),
         edges: s.edges.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target)),
         selectedNodeId: s.selectedNodeId && idsToRemove.has(s.selectedNodeId) ? null : s.selectedNodeId,
+        selectedEdgeId: s.selectedEdgeId && !survivingEdgeIds.has(s.selectedEdgeId) ? null : s.selectedEdgeId,
         editingNodeId: s.editingNodeId && idsToRemove.has(s.editingNodeId) ? null : s.editingNodeId,
         inspectorNodeId:
           s.inspectorNodeId && idsToRemove.has(s.inspectorNodeId) ? null : s.inspectorNodeId,
@@ -515,6 +560,7 @@ export const useEditorStore = create<EditorState>()(
         nodes,
         edges,
         selectedNodeId: null,
+        selectedEdgeId: null,
         editingNodeId: null,
         inspectorNodeId: null,
         dirty: true,
@@ -533,6 +579,7 @@ export const useEditorStore = create<EditorState>()(
         // A remote edit may have deleted whatever this tab had selected/open for
         // editing — drop the reference rather than pointing at a node that's gone.
         selectedNodeId: stillExists(s.selectedNodeId) ? s.selectedNodeId : null,
+        selectedEdgeId: s.selectedEdgeId && edges.some((e) => e.id === s.selectedEdgeId) ? s.selectedEdgeId : null,
         editingNodeId: stillExists(s.editingNodeId) ? s.editingNodeId : null,
         inspectorNodeId: stillExists(s.inspectorNodeId) ? s.inspectorNodeId : null,
         dirty: true,
@@ -549,6 +596,7 @@ export const useEditorStore = create<EditorState>()(
         nodes: restored.nodes,
         edges: restored.edges,
         selectedNodeId: null,
+        selectedEdgeId: null,
         editingNodeId: null,
         inspectorNodeId: null,
         dirty: true,
@@ -565,12 +613,18 @@ export const useEditorStore = create<EditorState>()(
         nodes: restored.nodes,
         edges: restored.edges,
         selectedNodeId: null,
+        selectedEdgeId: null,
         editingNodeId: null,
         inspectorNodeId: null,
         dirty: true,
         revision: state.revision + 1,
       });
     },
+
+    setAttachments: (attachments) => set({ attachments }),
+    addAttachment: (attachment) => set((s) => ({ attachments: [...s.attachments, attachment] })),
+    removeAttachmentRecord: (attachmentId) =>
+      set((s) => ({ attachments: s.attachments.filter((a) => a.id !== attachmentId) })),
 
     markSaving: () => set({ saveStatus: "saving" }),
 
