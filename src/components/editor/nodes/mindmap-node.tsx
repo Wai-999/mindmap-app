@@ -220,17 +220,6 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           borderRadius: 12,
         }}
       >
-        {selected && !readOnly && (
-          <NodeResizer
-            color={color ?? "var(--primary)"}
-            keepAspectRatio
-            minWidth={60}
-            minHeight={40}
-            // One undo entry per whole resize gesture, not one per pointer-move
-            // frame — same treatment as a node drag (commitBeforeDrag on start).
-            onResizeStart={commitBeforeDrag}
-          />
-        )}
         {connectionHandles}
         {imageUrl ? (
           // Private, per-node upload from local storage — never optimizable via
@@ -263,6 +252,23 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           </div>
         )}
         {infoButton}
+        {/* Rendered LAST so its corner handles sit above the connection strips in
+            DOM order — the strips have pointer-events:all and would otherwise
+            intercept a corner drag (starting a new connection instead of resizing).
+            Handles are enlarged and given a high z-index for the same reason: the
+            default 5px handle is too easily covered by the 10px-thick strips. */}
+        {selected && !readOnly && (
+          <NodeResizer
+            color={color ?? "var(--primary)"}
+            keepAspectRatio
+            minWidth={60}
+            minHeight={40}
+            handleStyle={{ width: 12, height: 12, borderRadius: 3, zIndex: 20 }}
+            // One undo entry per whole resize gesture, not one per pointer-move
+            // frame — same treatment as a node drag (commitBeforeDrag on start).
+            onResizeStart={commitBeforeDrag}
+          />
+        )}
       </div>
     );
   }
