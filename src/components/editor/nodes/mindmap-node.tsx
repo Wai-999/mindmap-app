@@ -2,9 +2,9 @@
 
 import { memo, useEffect, useRef } from "react";
 import { Handle, Position, useConnection, type NodeProps } from "@xyflow/react";
-import { ChevronRight, Info, StickyNote, CheckSquare, Square } from "lucide-react";
+import { ChevronRight, Info, StickyNote, CheckSquare, Square, ImageIcon } from "lucide-react";
 
-import type { MindmapNode as MindmapNodeType } from "@/types/mindmap";
+import type { MindmapNode as MindmapNodeType, NodeSize } from "@/types/mindmap";
 import { useEditorStore } from "@/store/editor-store";
 import { getChildIds, getDescendantIds } from "@/lib/mindmap/tree-utils";
 import { useRemoteSelectors } from "@/components/editor/collab/use-remote-selectors";
@@ -63,6 +63,20 @@ const HANDLE_STRIPS: { id: string; position: Position; style: React.CSSPropertie
   { id: "right", position: Position.Right, style: { ...STRIP_BASE, right: -5, left: "auto", top: 0, width: 10, height: "100%" } },
 ];
 
+// Three idea sizes scale the label text, the card's width bounds, and its padding
+// together, so a node reads as visually bigger/smaller without any change to tree or
+// link behavior. "medium" is the original look (unchanged from before sizes existed).
+const SIZE_TEXT: Record<NodeSize, string> = { small: "text-xs", medium: "text-sm", large: "text-lg" };
+const SIZE_WIDTH: Record<NodeSize, string> = {
+  small: "min-w-[90px] max-w-[220px]",
+  medium: "min-w-[120px] max-w-[280px]",
+  large: "min-w-[170px] max-w-[400px]",
+};
+const SIZE_PAD: Record<NodeSize, string> = { small: "px-3 py-1.5", medium: "px-4 py-2.5", large: "px-5 py-3.5" };
+// Rendered display width (px) of a standalone image node at each size — height is
+// derived from the image's own aspect ratio (object-contain, capped max-height).
+const SIZE_IMAGE_WIDTH: Record<NodeSize, number> = { small: 150, medium: 240, large: 360 };
+
 function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // Selection is driven entirely by our own store (selectedNodeId), not React Flow's
   // internal node.selected flag — store actions like addChildNode change selection
@@ -73,6 +87,8 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const color = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.color);
   const collapsed = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.collapsed ?? false);
   const shape = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.shape ?? "rounded");
+  const size = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.size ?? "medium");
+  const imageOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.imageOnly ?? false);
   const note = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.note);
   const task = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.task);
   // First image attachment only — a small cover thumbnail, not a gallery, matching
@@ -133,16 +149,104 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     setEditingNode(null);
   }
 
+  // Shared by both render paths: the four invisible border strips that let a
+  // connection start from anywhere on the perimeter, plus the whole-node drop target
+  // shown only while another node's connection drag is in progress.
+  const connectionHandles = (
+    <>
+      {HANDLE_STRIPS.map((strip) => (
+        <Handle key={strip.id} type="source" id={strip.id} position={strip.position} style={strip.style} />
+      ))}
+      {isConnectionTarget && (
+        <Handle
+          type="target"
+          id="drop"
+          position={Position.Left}
+          isConnectableStart={false}
+          style={{
+            position: "absolute",
+            inset: 0,
+            transform: "none",
+            width: "100%",
+            height: "100%",
+            borderRadius: 12,
+            background: "transparent",
+            border: "none",
+            zIndex: 10,
+          }}
+        />
+      )}
+    </>
+  );
+
+  const infoButton = (
+    <button
+      type="button"
+      className="absolute -top-3 -right-3 flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100"
+      onClick={(e) => {
+        e.stopPropagation();
+        setInspectorNode(id);
+      }}
+      aria-label="Open details"
+    >
+      <Info className="size-3.5" />
+    </button>
+  );
+
+  // A standalone image node: just the uploaded image (or a placeholder until the
+  // upload lands), no label/dot/card chrome. Still fully a node — draggable,
+  // connectable via the shared strips, selectable, deletable, resizable by size.
+  if (imageOnly) {
+    return (
+      <div
+        className="group relative"
+        style={{
+          boxShadow: remoteSelectorColors[0]
+            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+            : selected
+              ? `0 0 0 2px ${color ?? "var(--primary)"}`
+              : undefined,
+          borderRadius: 12,
+        }}
+      >
+        {connectionHandles}
+        {imageUrl ? (
+          // Private, per-node upload from local storage — never optimizable via
+          // next/image's remote loader, hence a plain <img>.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt={label || "Image"}
+            className="block max-h-[420px] rounded-xl object-contain"
+            style={{ width: SIZE_IMAGE_WIDTH[size] }}
+            draggable={false}
+          />
+        ) : (
+          <div
+            className="text-muted-foreground flex h-32 items-center justify-center rounded-xl border border-dashed"
+            style={{ width: SIZE_IMAGE_WIDTH[size] }}
+          >
+            <ImageIcon className="size-6 animate-pulse" />
+          </div>
+        )}
+        {infoButton}
+      </div>
+    );
+  }
+
   const isDiamond = shape === "diamond";
 
   return (
     <div
       className={cn(
-        "group relative min-w-[120px] max-w-[280px] text-card-foreground shadow-sm transition-shadow",
+        "group relative text-card-foreground shadow-sm transition-shadow",
+        SIZE_WIDTH[size],
+        SIZE_TEXT[size],
         isDiamond
           ? "bg-transparent px-9 py-7"
           : cn(
-              "border-2 bg-card px-4 py-2.5",
+              "border-2 bg-card",
+              SIZE_PAD[size],
               shape === "rectangle" ? "rounded-none" : shape === "pill" ? "rounded-full" : "rounded-xl",
             ),
         selected ? "shadow-md" : "hover:shadow-md",
@@ -179,42 +283,9 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         </svg>
       )}
 
-      {/* Invisible strips covering the node's whole border, one per side, so a
-          free-form link drag can start from ANY point on the perimeter (crosshair
-          cursor gives the affordance) — the interior stays free for dragging the node
-          itself. Ids are kept as the four side names because hierarchy edges anchor to
-          "right"/"left" (see the normalization in mindmap-canvas.tsx), and each strip's
-          center is exactly that side's midpoint. connectionMode="loose" on the canvas
-          lets every strip both start and end a connection. */}
-      {HANDLE_STRIPS.map((strip) => (
-        <Handle key={strip.id} type="source" id={strip.id} position={strip.position} style={strip.style} />
-      ))}
-
-      {/* While a connection drag from another node is in progress, the entire node
-          becomes a drop target — the link can end anywhere on the node, not just on a
-          border strip. Rendered only during the drag so it never blocks normal
-          click/drag/edit interactions; zIndex lifts it above the node's own content,
-          since the drop is resolved by hit-testing whatever element is under the
-          pointer, and the label/buttons would otherwise swallow it. */}
-      {isConnectionTarget && (
-        <Handle
-          type="target"
-          id="drop"
-          position={Position.Left}
-          isConnectableStart={false}
-          style={{
-            position: "absolute",
-            inset: 0,
-            transform: "none",
-            width: "100%",
-            height: "100%",
-            borderRadius: 12,
-            background: "transparent",
-            border: "none",
-            zIndex: 10,
-          }}
-        />
-      )}
+      {/* Border-perimeter connection strips + whole-node drop target (see the
+          connectionHandles definition above — shared with the image-only path). */}
+      {connectionHandles}
 
       {imageUrl &&
         (shape === "rounded" || shape === "rectangle" ? (
@@ -249,7 +320,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             ref={editableRef}
             contentEditable
             suppressContentEditableWarning
-            className="min-w-[2ch] flex-1 text-sm leading-snug outline-none"
+            className="min-w-[2ch] flex-1 leading-snug outline-none"
             onBlur={commitEdit}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === "Escape") {
@@ -264,7 +335,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         ) : (
           <span
             className={cn(
-              "flex-1 text-sm leading-snug break-words",
+              "flex-1 leading-snug break-words",
               !label && "text-muted-foreground italic",
             )}
           >
@@ -285,17 +356,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         </div>
       )}
 
-      <button
-        type="button"
-        className="absolute -top-3 -right-3 flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100"
-        onClick={(e) => {
-          e.stopPropagation();
-          setInspectorNode(id);
-        }}
-        aria-label="Open details"
-      >
-        <Info className="size-3.5" />
-      </button>
+      {infoButton}
 
       {childCount > 0 && (
         <button

@@ -335,6 +335,77 @@ describe("editor-store addLinkedNode (drag-to-empty-canvas)", () => {
   });
 });
 
+describe("editor-store updateNodeSize", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+  });
+
+  it("sets the node's size and marks the canvas dirty", () => {
+    useEditorStore.getState().updateNodeSize("root", "large");
+    const node = useEditorStore.getState().nodes.find((n) => n.id === "root");
+    expect(node?.data.size).toBe("large");
+    expect(useEditorStore.getState().dirty).toBe(true);
+  });
+
+  it("clearing back to undefined (the medium default) is one Undo away", () => {
+    useEditorStore.getState().updateNodeSize("root", "small");
+    useEditorStore.getState().updateNodeSize("root", undefined);
+    expect(useEditorStore.getState().nodes.find((n) => n.id === "root")?.data.size).toBeUndefined();
+
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes.find((n) => n.id === "root")?.data.size).toBe("small");
+  });
+
+  it("does nothing when read-only", () => {
+    load([makeNode("root")], [], true);
+    useEditorStore.getState().updateNodeSize("root", "large");
+    expect(useEditorStore.getState().nodes.find((n) => n.id === "root")?.data.size).toBeUndefined();
+  });
+});
+
+describe("editor-store addImageNode (upload image onto canvas)", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+    clearLastCanvasPoint();
+  });
+
+  it("creates a parentless imageOnly node carrying the filename as its label", () => {
+    const id = useEditorStore.getState().addImageNode("photo.png", { x: 300, y: 200 })!;
+    const state = useEditorStore.getState();
+    const node = state.nodes.find((n) => n.id === id);
+
+    expect(node?.data.imageOnly).toBe(true);
+    expect(node?.data.label).toBe("photo.png");
+    // Parentless — it's a standalone element, so it reads as a forest root.
+    expect(isRootNode(state.edges, id!)).toBe(true);
+    expect(node?.position).toEqual({
+      x: 300 - ROOT_AT_CURSOR_OFFSET.x,
+      y: 200 - ROOT_AT_CURSOR_OFFSET.y,
+    });
+  });
+
+  it("selects the new image node but does NOT enter edit mode (no text to type)", () => {
+    const id = useEditorStore.getState().addImageNode("photo.png", { x: 0, y: 0 });
+    const state = useEditorStore.getState();
+    expect(state.selectedNodeId).toBe(id);
+    expect(state.editingNodeId).toBeNull();
+  });
+
+  it("does nothing and returns null when read-only", () => {
+    load([makeNode("root")], [], true);
+    const id = useEditorStore.getState().addImageNode("photo.png", { x: 0, y: 0 });
+    expect(id).toBeNull();
+    expect(useEditorStore.getState().nodes).toHaveLength(1);
+  });
+
+  it("is one Undo away", () => {
+    const before = useEditorStore.getState().nodes.length;
+    useEditorStore.getState().addImageNode("photo.png", { x: 0, y: 0 });
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes).toHaveLength(before);
+  });
+});
+
 describe("editor-store reconnectLinkEdge (dragging an existing connection's end)", () => {
   beforeEach(() => {
     load([makeNode("root"), makeNode("a"), makeNode("b"), makeNode("c")], [makeEdge("root", "a")]);

@@ -65,6 +65,7 @@ interface EditorState {
   updateNodeLabel: (id: string, label: string) => void;
   updateNodeColor: (id: string, color: string) => void;
   updateNodeShape: (id: string, shape: MindmapNodeData["shape"]) => void;
+  updateNodeSize: (id: string, size: MindmapNodeData["size"]) => void;
   updateNodeNote: (id: string, note: string) => void;
   updateNodeTask: (id: string, task: MindmapNodeData["task"]) => void;
   toggleCollapsed: (id: string) => void;
@@ -92,6 +93,11 @@ interface EditorState {
   // becoming a strict parent/child relationship. Returns the new node's id, or null
   // if rejected (missing source node, or readOnly).
   addLinkedNode: (fromNodeId: string, position: { x: number; y: number }) => string | null;
+  // A standalone image node (imageOnly) placed on the canvas — parentless, like a
+  // root, but rendered as just its image once the attachment upload completes. `label`
+  // is the original filename, kept for the outline view/exports. `at` centers it on a
+  // point (cursor/viewport), else falls back to the same computed spot addRootNode uses.
+  addImageNode: (label: string, at?: { x: number; y: number }) => string | null;
   removeLinkEdge: (edgeId: string) => void;
   // Re-targets an existing link edge's endpoints (dragging one end to a different
   // node) — never applies to hierarchy edges, which only change via the structural
@@ -257,6 +263,20 @@ export const useEditorStore = create<EditorState>()(
       }));
     },
 
+    updateNodeSize: (id, size) => {
+      const state = get();
+      if (state.readOnly) return;
+      const target = state.nodes.find((n) => n.id === id);
+      if (!target || target.data.size === size) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, size } } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
     updateNodeNote: (id, note) => {
       const state = get();
       if (state.readOnly) return;
@@ -410,6 +430,44 @@ export const useEditorStore = create<EditorState>()(
         edges: [...s.edges, newEdge],
         selectedNodeId: id,
         editingNodeId: id,
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+
+      return id;
+    },
+
+    addImageNode: (label, at) => {
+      const state = get();
+      if (state.readOnly) return null;
+
+      commitHistory(state.nodes, state.edges);
+
+      // Same cursor-preferred placement as addRootNode — the image lands where the
+      // user is pointing when they trigger "Add image", else a computed fresh spot.
+      const cursor = at ?? getLastCanvasPoint();
+      const minX = state.nodes.length > 0 ? Math.min(...state.nodes.map((n) => n.position.x)) : 0;
+      const maxY = state.nodes.length > 0 ? Math.max(...state.nodes.map((n) => n.position.y)) : 0;
+      const position = cursor
+        ? { x: cursor.x - ROOT_AT_CURSOR_OFFSET.x, y: cursor.y - ROOT_AT_CURSOR_OFFSET.y }
+        : { x: minX, y: maxY + 160 };
+
+      const id = generateNodeId();
+      const newNode: MindmapNode = {
+        id,
+        type: "mindmapNode",
+        position,
+        // imageOnly hides all card chrome; the label (filename) is kept for the
+        // outline view/exports. No color dot is shown, but a color is still assigned
+        // so a link edge drawn FROM this image has a sensible stroke color.
+        data: { label, imageOnly: true, color: resolveNewRootColor(state.nodes, state.edges) },
+      };
+
+      // Not selected-into-edit like a text idea (there's no label to type) — just
+      // selected, so the size/delete toolbar actions apply to it immediately.
+      set((s) => ({
+        nodes: [...s.nodes, newNode],
+        selectedNodeId: id,
         dirty: true,
         revision: s.revision + 1,
       }));

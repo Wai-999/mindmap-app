@@ -4,12 +4,14 @@ import type { z } from "zod";
 import type {
   nodeDataSchema,
   nodeShapeSchema,
+  nodeSizeSchema,
   edgeDataSchema,
   mindmapContentSchema,
 } from "@/lib/validations/mindmap";
 
 export type MindmapNodeData = z.infer<typeof nodeDataSchema>;
 export type NodeShape = z.infer<typeof nodeShapeSchema>;
+export type NodeSize = z.infer<typeof nodeSizeSchema>;
 export type MindmapEdgeData = z.infer<typeof edgeDataSchema>;
 
 export type MindmapNode = Node<MindmapNodeData, "mindmapNode">;

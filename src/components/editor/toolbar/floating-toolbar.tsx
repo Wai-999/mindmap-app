@@ -8,6 +8,8 @@ import { useHistoryStore } from "@/store/history-store";
 import { deleteNodeWithUndo } from "@/lib/mindmap/delete-with-undo";
 import { NodeColorPicker } from "@/components/editor/nodes/node-color-picker";
 import { NodeShapePicker } from "@/components/editor/nodes/node-shape-picker";
+import { NodeSizePicker } from "@/components/editor/nodes/node-size-picker";
+import { AddImageButton } from "@/components/editor/toolbar/add-image-button";
 import { LayoutMenu } from "@/components/editor/toolbar/layout-menu";
 import { ExportMenu } from "@/components/editor/export/export-menu";
 import { ImportDialog } from "@/components/editor/export/import-dialog";
@@ -51,6 +53,7 @@ export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
       <ToolbarButton label="Add primary idea" onClick={() => addRootNode()}>
         <CirclePlus className="size-4" />
       </ToolbarButton>
+      <AddImageButton endpoint={endpoint} />
 
       {selectedNodeId && (
         <>
@@ -63,6 +66,7 @@ export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
           </ToolbarButton>
           <NodeColorPicker nodeId={selectedNodeId} />
           <NodeShapePicker nodeId={selectedNodeId} />
+          <NodeSizePicker nodeId={selectedNodeId} />
           <Divider />
           <ToolbarButton
             label="Delete"

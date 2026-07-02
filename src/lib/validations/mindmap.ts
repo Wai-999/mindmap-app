@@ -12,12 +12,23 @@ export const taskSchema = z.object({
 // just wants plain mind-mapping.
 export const nodeShapeSchema = z.enum(["rounded", "rectangle", "pill", "diamond"]);
 
+// Absent/"medium" is the original node scale. "small"/"large" scale the card's text
+// and width together so a mindmap can visually rank ideas (a big central concept vs.
+// small supporting details) without changing any of the tree/link semantics.
+export const nodeSizeSchema = z.enum(["small", "medium", "large"]);
+
 export const nodeDataSchema = z.object({
   label: z.string().max(2000),
   color: z.string().max(20).optional(),
   icon: z.string().max(50).optional(),
   collapsed: z.boolean().optional(),
   shape: nodeShapeSchema.optional(),
+  size: nodeSizeSchema.optional(),
+  // Renders the node as just its uploaded image (no label row, color dot, or card
+  // chrome) — set when a node is created via "Add image". It's still an ordinary
+  // node otherwise (draggable, connectable, deletable), and keeps its label (the
+  // original filename) for the outline view, exports, and accessibility.
+  imageOnly: z.boolean().optional(),
   // Markdown-capable free text, rendered via react-markdown in the inspector panel
   // and presentation mode. Capped for the same DoS-hardening reason array sizes are.
   note: z.string().max(10_000).optional(),

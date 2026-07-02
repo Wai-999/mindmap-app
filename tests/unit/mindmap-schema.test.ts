@@ -38,3 +38,24 @@ describe("nodeDataSchema (note/task fields)", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("nodeDataSchema (size / imageOnly fields)", () => {
+  it("accepts each valid size", () => {
+    for (const size of ["small", "medium", "large"] as const) {
+      expect(nodeDataSchema.safeParse({ label: "Idea", size }).success).toBe(true);
+    }
+  });
+
+  it("rejects an unknown size", () => {
+    expect(nodeDataSchema.safeParse({ label: "Idea", size: "huge" }).success).toBe(false);
+  });
+
+  it("accepts an imageOnly node (label kept as the filename)", () => {
+    const result = nodeDataSchema.safeParse({ label: "photo.png", imageOnly: true });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a non-boolean imageOnly", () => {
+    expect(nodeDataSchema.safeParse({ label: "Idea", imageOnly: "yes" }).success).toBe(false);
+  });
+});
