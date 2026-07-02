@@ -27,16 +27,19 @@ export function MindmapEdge({
     (s) => s.nodes.find((n) => n.id === source)?.data.color ?? "var(--muted-foreground)",
   );
 
-  // Link edges float: each end sits on its node's border at the point facing the
+  // Every edge floats: each end sits on its node's border at the point facing the
   // other node, so the connection rotates around the node as either end moves —
-  // instead of staying pinned to whichever side handle the drag happened to touch.
-  // Hierarchy edges keep their fixed left/right anchoring (the tree layout depends on
-  // that shape), so these hooks only feed the link branch below.
+  // instead of staying pinned to whichever side handle the drag happened to touch (or,
+  // for a hierarchy edge, to a fixed right/left pair that only looks right when the
+  // child happens to sit to the parent's right). Tree/radial layout only ever
+  // computes node *positions*, never anchor sides, so applying this to hierarchy
+  // edges too doesn't affect layout — only how the line reaches wherever the node
+  // actually ended up, including after being dragged anywhere by hand.
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
   let pathParams = { sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition };
-  if (isLink && sourceNode && targetNode) {
+  if (sourceNode && targetNode) {
     const sourceRect: Rect = {
       x: sourceNode.internals.positionAbsolute.x,
       y: sourceNode.internals.positionAbsolute.y,
