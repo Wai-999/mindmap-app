@@ -344,9 +344,34 @@ describe("editor-store reconnectLinkEdge (dragging an existing connection's end)
     const id = useEditorStore.getState().addLinkEdge("a", "b")!;
     useEditorStore.getState().reconnectLinkEdge(id, "a", "c");
 
-    const edge = useEditorStore.getState().edges.find((e) => e.id === id);
-    expect(edge?.source).toBe("a");
-    expect(edge?.target).toBe("c");
+    const edges = useEditorStore.getState().edges;
+    expect(edges.find((e) => e.id === id)).toBeUndefined(); // old id retired, see below
+    const edge = edges.find((e) => e.source === "a" && e.target === "c");
+    expect(edge).toBeDefined();
+  });
+
+  it("regenerates the edge's id from its new endpoints, so a later edge freshly created between the original pair doesn't collide with it", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "b")!; // id derived from (a, b)
+    useEditorStore.getState().reconnectLinkEdge(id, "a", "c"); // now (a, c) — id must follow
+    const newId = useEditorStore.getState().addLinkEdge("a", "b")!; // (a, b) is free again
+
+    // The reconnected edge vacated the id derived from (a, b), so the fresh edge is free
+    // to reuse it — that's expected. What must never happen is two edges sharing one id.
+    const state = useEditorStore.getState();
+    const ids = state.edges.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(state.edges.some((e) => e.id === newId && e.source === "a" && e.target === "b")).toBe(true);
+    expect(state.edges.some((e) => e.id !== newId && e.source === "a" && e.target === "c")).toBe(true);
+  });
+
+  it("moves edge selection over to the new id when reconnecting the currently-selected edge", () => {
+    const id = useEditorStore.getState().addLinkEdge("a", "b")!;
+    useEditorStore.getState().selectEdge(id);
+    useEditorStore.getState().reconnectLinkEdge(id, "a", "c");
+
+    const state = useEditorStore.getState();
+    expect(state.selectedEdgeId).not.toBe(id);
+    expect(state.selectedEdgeId).toBe(state.edges.find((e) => e.source === "a" && e.target === "c")?.id);
   });
 
   it("refuses to reconnect a hierarchy edge", () => {

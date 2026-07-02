@@ -498,8 +498,20 @@ export const useEditorStore = create<EditorState>()(
       if (wouldDuplicate) return;
 
       commitHistory(state.nodes, state.edges);
+      // Regenerate the id from the new endpoints rather than keeping the old one —
+      // ids are otherwise always derived from (source, target) (see addLinkEdge), so
+      // a reconnected edge keeping its pre-reconnect id could collide with a later,
+      // unrelated edge freshly created between that original pair: both edges would
+      // then share one id, and selecting either one would satisfy `isSelected` for
+      // both (the exact cause of two link-delete buttons appearing at once). The
+      // wouldDuplicate check above already guarantees no other edge currently
+      // occupies (newSource, newTarget) in this order, so the new id is safe.
+      const newId = generateEdgeId(newSource, newTarget);
       set((s) => ({
-        edges: s.edges.map((e) => (e.id === edgeId ? { ...e, source: newSource, target: newTarget } : e)),
+        edges: s.edges.map((e) =>
+          e.id === edgeId ? { ...e, id: newId, source: newSource, target: newTarget } : e,
+        ),
+        selectedEdgeId: s.selectedEdgeId === edgeId ? newId : s.selectedEdgeId,
         dirty: true,
         revision: s.revision + 1,
       }));
