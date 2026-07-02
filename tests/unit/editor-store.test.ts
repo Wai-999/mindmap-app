@@ -598,3 +598,98 @@ describe("editor-store selectNode / selectEdge mutual exclusivity", () => {
     expect(useEditorStore.getState().selectedEdgeId).toBeNull();
   });
 });
+
+describe("editor-store multi-select + bulk actions", () => {
+  beforeEach(() => {
+    load(
+      [makeNode("root"), makeNode("a"), makeNode("b"), makeNode("c")],
+      [makeEdge("root", "a"), makeEdge("root", "b"), makeEdge("a", "c")],
+    );
+  });
+
+  it("setSelectedNodeIds sets the set and the primary (last) node", () => {
+    useEditorStore.getState().setSelectedNodeIds(["a", "b"]);
+    const s = useEditorStore.getState();
+    expect(s.selectedNodeIds).toEqual(["a", "b"]);
+    expect(s.selectedNodeId).toBe("b");
+  });
+
+  it("selectNode collapses a multi-selection down to one node", () => {
+    useEditorStore.getState().setSelectedNodeIds(["a", "b"]);
+    useEditorStore.getState().selectNode("root");
+    const s = useEditorStore.getState();
+    expect(s.selectedNodeIds).toEqual(["root"]);
+    expect(s.selectedNodeId).toBe("root");
+  });
+
+  it("updateSelectedNodesColor recolors every selected node in one undo step", () => {
+    useEditorStore.getState().setSelectedNodeIds(["a", "b"]);
+    useEditorStore.getState().updateSelectedNodesColor("#123456");
+    let s = useEditorStore.getState();
+    expect(s.nodes.find((n) => n.id === "a")?.data.color).toBe("#123456");
+    expect(s.nodes.find((n) => n.id === "b")?.data.color).toBe("#123456");
+    expect(s.nodes.find((n) => n.id === "root")?.data.color).not.toBe("#123456");
+
+    useEditorStore.getState().undo();
+    s = useEditorStore.getState();
+    expect(s.nodes.find((n) => n.id === "a")?.data.color).not.toBe("#123456");
+  });
+
+  it("deleteSelectedNodes removes every selected node and its subtree (a is deleted with c)", () => {
+    useEditorStore.getState().setSelectedNodeIds(["a", "b"]);
+    useEditorStore.getState().deleteSelectedNodes();
+    const ids = useEditorStore.getState().nodes.map((n) => n.id).sort();
+    expect(ids).toEqual(["root"]);
+    expect(useEditorStore.getState().selectedNodeIds).toEqual([]);
+  });
+
+  it("deleteSelectedNodes is one undo step", () => {
+    useEditorStore.getState().setSelectedNodeIds(["a", "b"]);
+    useEditorStore.getState().deleteSelectedNodes();
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes).toHaveLength(4);
+  });
+
+  it("bulk actions do nothing when read-only", () => {
+    load([makeNode("root"), makeNode("a")], [], true);
+    useEditorStore.setState({ selectedNodeIds: ["a"], selectedNodeId: "a" });
+    useEditorStore.getState().deleteSelectedNodes();
+    expect(useEditorStore.getState().nodes).toHaveLength(2);
+  });
+});
+
+describe("editor-store updateNodeIcon", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+  });
+
+  it("sets and clears an emoji icon, each one undo step", () => {
+    useEditorStore.getState().updateNodeIcon("root", "🔥");
+    expect(useEditorStore.getState().nodes.find((n) => n.id === "root")?.data.icon).toBe("🔥");
+
+    useEditorStore.getState().updateNodeIcon("root", undefined);
+    expect(useEditorStore.getState().nodes.find((n) => n.id === "root")?.data.icon).toBeUndefined();
+
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes.find((n) => n.id === "root")?.data.icon).toBe("🔥");
+  });
+});
+
+describe("editor-store focus mode", () => {
+  beforeEach(() => {
+    load([makeNode("root"), makeNode("a")], [makeEdge("root", "a")]);
+  });
+
+  it("setFocusedNode sets and clears the focused node", () => {
+    useEditorStore.getState().setFocusedNode("a");
+    expect(useEditorStore.getState().focusedNodeId).toBe("a");
+    useEditorStore.getState().setFocusedNode(null);
+    expect(useEditorStore.getState().focusedNodeId).toBeNull();
+  });
+
+  it("deleting the focused node clears focus", () => {
+    useEditorStore.getState().setFocusedNode("a");
+    useEditorStore.getState().deleteNodeAndSubtree("a");
+    expect(useEditorStore.getState().focusedNodeId).toBeNull();
+  });
+});

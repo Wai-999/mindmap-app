@@ -82,12 +82,16 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // internal node.selected flag — store actions like addChildNode change selection
   // programmatically without going through RF's click handling, so RF's own flag
   // would drift out of sync (see nodesSelectable={false} on the canvas).
-  const selected = useEditorStore((s) => s.selectedNodeId === id);
+  // Selection is a set now (multi-select via marquee / Cmd-click) — a node is
+  // "selected" if it's anywhere in it. `.includes` returns a primitive boolean, so no
+  // useShallow guard is needed.
+  const selected = useEditorStore((s) => s.selectedNodeIds.includes(id));
   const label = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.label ?? "");
   const color = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.color);
   const collapsed = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.collapsed ?? false);
   const shape = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.shape ?? "rounded");
   const size = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.size ?? "medium");
+  const icon = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.icon);
   const imageOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.imageOnly ?? false);
   // Explicit dimensions once an image node has been manually resized (NodeResizer
   // writes these top-level props via onNodesChange). Undefined until first resize —
@@ -350,10 +354,18 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         ))}
 
       <div className="flex items-center gap-2">
-        <span
-          className="size-2 shrink-0 rounded-full"
-          style={{ backgroundColor: color ?? "var(--muted-foreground)" }}
-        />
+        {icon ? (
+          // An emoji/icon replaces the color dot when set — a bigger, at-a-glance
+          // marker. leading-none keeps it vertically centered with the label text.
+          <span className="shrink-0 text-base leading-none select-none" aria-hidden="true">
+            {icon}
+          </span>
+        ) : (
+          <span
+            className="size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: color ?? "var(--muted-foreground)" }}
+          />
+        )}
         {isEditing ? (
           <div
             ref={editableRef}

@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import type { MindmapEdge as MindmapEdgeType } from "@/types/mindmap";
 import { useEditorStore } from "@/store/editor-store";
 import { getFloatingEdgeParams, type Rect } from "@/lib/mindmap/floating-edge";
+import { getFocusedSubtree } from "@/lib/mindmap/focus";
 import { removeLinkEdgeWithUndo } from "@/lib/mindmap/delete-with-undo";
 
 export function MindmapEdge({
@@ -26,6 +27,13 @@ export function MindmapEdge({
   const color = useEditorStore(
     (s) => s.nodes.find((n) => n.id === source)?.data.color ?? "var(--muted-foreground)",
   );
+  // Dims in focus mode when either endpoint is outside the focused subtree. The
+  // selector returns a plain boolean, so this edge only re-renders when its dim state
+  // actually flips (getFocusedSubtree is cached per edges-array, so it's cheap).
+  const dimmed = useEditorStore((s) => {
+    const set = getFocusedSubtree(s.edges, s.focusedNodeId);
+    return set ? !(set.has(source) && set.has(target)) : false;
+  });
 
   // Every edge floats: each end sits on its node's border at the point facing the
   // other node, so the connection rotates around the node as either end moves —
@@ -70,22 +78,24 @@ export function MindmapEdge({
       <BaseEdge
         id={id}
         path={edgePath}
-        style={
-          isLink
+        style={{
+          opacity: dimmed ? 0.12 : undefined,
+          ...(isLink
             ? {
                 stroke: isSelected ? "var(--primary)" : "var(--muted-foreground)",
                 strokeWidth: isSelected ? 2.5 : 2,
                 strokeDasharray: "6 4",
                 cursor: "pointer",
               }
-            : { stroke: color, strokeWidth: 2.5 }
-        }
+            : { stroke: color, strokeWidth: 2.5 }),
+        }}
       />
       {/* Delete only surfaces once a link is clicked, instead of every link
           permanently showing its own × — several crossing or nearby connections
           used to stack their buttons on top of each other; only one edge can ever
-          be selected at a time, so this can't happen anymore. */}
-      {isLink && isSelected && !readOnly && (
+          be selected at a time, so this can't happen anymore. Hidden while dimmed in
+          focus mode. */}
+      {isLink && isSelected && !readOnly && !dimmed && (
         <EdgeLabelRenderer>
           <button
             type="button"

@@ -8,9 +8,13 @@ import { NODE_COLORS } from "@/lib/mindmap/defaults";
 import { useEditorStore } from "@/store/editor-store";
 import { cn } from "@/lib/utils";
 
-export function NodeColorPicker({ nodeId }: { nodeId: string }) {
+// `bulk` recolors the entire current selection in one step (updateSelectedNodesColor)
+// instead of a single node — used by the toolbar's multi-select section. In bulk mode
+// there's no single "current color" to highlight, so the swatch ring is suppressed.
+export function NodeColorPicker({ nodeId, bulk = false }: { nodeId: string; bulk?: boolean }) {
   const currentColor = useEditorStore((s) => s.nodes.find((n) => n.id === nodeId)?.data.color);
   const updateNodeColor = useEditorStore((s) => s.updateNodeColor);
+  const updateSelectedNodesColor = useEditorStore((s) => s.updateSelectedNodesColor);
 
   return (
     <Popover>
@@ -19,8 +23,8 @@ export function NodeColorPicker({ nodeId }: { nodeId: string }) {
           variant="ghost"
           size="icon"
           className="size-8 rounded-full"
-          aria-label="Change color"
-          title="Change color"
+          aria-label={bulk ? "Change color of selected" : "Change color"}
+          title={bulk ? "Change color of selected" : "Change color"}
         >
           <Palette className="size-4" />
         </Button>
@@ -33,10 +37,10 @@ export function NodeColorPicker({ nodeId }: { nodeId: string }) {
               type="button"
               className={cn(
                 "size-6 rounded-full transition-transform hover:scale-110",
-                currentColor === color && "ring-2 ring-foreground ring-offset-2",
+                !bulk && currentColor === color && "ring-2 ring-foreground ring-offset-2",
               )}
               style={{ backgroundColor: color }}
-              onClick={() => updateNodeColor(nodeId, color)}
+              onClick={() => (bulk ? updateSelectedNodesColor(color) : updateNodeColor(nodeId, color))}
               aria-label={`Set color ${color}`}
             />
           ))}

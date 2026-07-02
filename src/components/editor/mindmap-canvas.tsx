@@ -25,6 +25,7 @@ import { MindmapNode } from "@/components/editor/nodes/mindmap-node";
 import { MindmapEdge } from "@/components/editor/edges/mindmap-edge";
 import type { MindmapEdge as MindmapEdgeType } from "@/types/mindmap";
 import { getHiddenIds, filterVisible, isHierarchyEdge } from "@/lib/mindmap/tree-utils";
+import { getFocusedSubtree } from "@/lib/mindmap/focus";
 import { setLastCanvasPoint, clearLastCanvasPoint, setEditClickPoint } from "@/lib/mindmap/canvas-cursor";
 
 const nodeTypes = { mindmapNode: MindmapNode };
@@ -33,6 +34,8 @@ const edgeTypes = { mindmapEdge: MindmapEdge };
 export function MindmapCanvas() {
   const nodes = useEditorStore((s) => s.nodes);
   const edges = useEditorStore((s) => s.edges);
+  const selectedNodeIds = useEditorStore((s) => s.selectedNodeIds);
+  const focusedNodeId = useEditorStore((s) => s.focusedNodeId);
   const readOnly = useEditorStore((s) => s.readOnly);
   const onNodesChange = useEditorStore((s) => s.onNodesChange);
   const onEdgesChange = useEditorStore((s) => s.onEdgesChange);
@@ -72,7 +75,7 @@ export function MindmapCanvas() {
     [readOnly, addRootNode, screenToFlowPosition, selectNode],
   );
 
-  const { nodes: visibleNodes, edges: visibleEdges } = useMemo(() => {
+  const { nodes: baseNodes, edges: baseEdges } = useMemo(() => {
     const hidden = getHiddenIds(nodes, edges);
     const { nodes: vn, edges: ve } = filterVisible(nodes, edges, hidden);
     // Hierarchy edges saved before free-form links existed have no handle id at all
@@ -102,6 +105,33 @@ export function MindmapCanvas() {
     });
     return { nodes: vn, edges: normalizedEdges };
   }, [nodes, edges]);
+
+  // Cheap second pass (kept out of the normalization memo above so it doesn't re-run
+  // on every selection change): mirror the store's selection onto React Flow's
+  // node.selected (so multi-drag moves the whole set together), and apply focus-mode
+  // dimming. focusedSet is the isolated node's hierarchy subtree; everything outside
+  // it dims and goes non-interactive, edges dim if either end is outside.
+  const displayNodes = useMemo(() => {
+    const selectedSet = new Set(selectedNodeIds);
+    // Full store edges (not the collapse-filtered baseEdges) so the focused subtree is
+    // computed against the true hierarchy even when part of it is collapsed. Edges dim
+    // themselves (see mindmap-edge.tsx reading the same cached set) — only nodes need
+    // their style set here.
+    const focusedSet = getFocusedSubtree(edges, focusedNodeId);
+
+    return baseNodes.map((n) => {
+      const isSelected = selectedSet.has(n.id);
+      const dim = focusedSet ? !focusedSet.has(n.id) : false;
+      if (!isSelected && !dim && !n.selected && !n.style?.opacity) return n;
+      return {
+        ...n,
+        selected: isSelected,
+        style: dim
+          ? { ...n.style, opacity: 0.12, pointerEvents: "none" as const }
+          : { ...n.style, opacity: undefined, pointerEvents: undefined },
+      };
+    });
+  }, [baseNodes, edges, selectedNodeIds, focusedNodeId]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -154,11 +184,6 @@ export function MindmapCanvas() {
     [readOnly, reconnectLinkEdge],
   );
 
-  const handleNodeClick: NodeMouseHandler = useCallback(
-    (_event, node) => selectNode(node.id),
-    [selectNode],
-  );
-
   // Only link edges are selectable this way — hierarchy edges have no click-driven
   // action at all (they only change via the structural store actions), so clicking
   // one is a no-op rather than clearing whatever else was selected.
@@ -187,13 +212,12 @@ export function MindmapCanvas() {
 
   return (
     <ReactFlow
-      nodes={visibleNodes}
-      edges={visibleEdges}
+      nodes={displayNodes}
+      edges={baseEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
-      onNodeClick={handleNodeClick}
       onNodeDoubleClick={handleNodeDoubleClick}
       onEdgeClick={handleEdgeClick}
       onNodeDragStart={commitBeforeDrag}
@@ -207,7 +231,13 @@ export function MindmapCanvas() {
       deleteKeyCode={null}
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly}
-      elementsSelectable={false}
+      // React Flow drives selection now (click, Cmd/Ctrl-click to add, Shift-drag for
+      // a marquee box) and reports it through onNodesChange's `select` changes, which
+      // the store folds into selectedNodeIds. Plain drag still pans (selectionKeyCode
+      // gates the marquee), so panning is unaffected.
+      elementsSelectable
+      selectionKeyCode="Shift"
+      multiSelectionKeyCode={["Meta", "Control"]}
       edgesFocusable={false}
       edgesReconnectable={false}
       zoomOnDoubleClick={false}

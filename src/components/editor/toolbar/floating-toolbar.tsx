@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Plus, GitBranch, Trash2, Undo2, Redo2, CirclePlus } from "lucide-react";
+import { toast } from "sonner";
+import { Plus, GitBranch, Trash2, Undo2, Redo2, CirclePlus, Focus } from "lucide-react";
 
 import { useEditorStore } from "@/store/editor-store";
 import { useHistoryStore } from "@/store/history-store";
@@ -9,6 +10,7 @@ import { deleteNodeWithUndo } from "@/lib/mindmap/delete-with-undo";
 import { NodeColorPicker } from "@/components/editor/nodes/node-color-picker";
 import { NodeShapePicker } from "@/components/editor/nodes/node-shape-picker";
 import { NodeSizePicker } from "@/components/editor/nodes/node-size-picker";
+import { NodeIconPicker } from "@/components/editor/nodes/node-icon-picker";
 import { AddImageButton } from "@/components/editor/toolbar/add-image-button";
 import { LayoutMenu } from "@/components/editor/toolbar/layout-menu";
 import { ExportMenu } from "@/components/editor/export/export-menu";
@@ -23,15 +25,27 @@ interface FloatingToolbarProps {
 export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
   const readOnly = useEditorStore((s) => s.readOnly);
   const selectedNodeId = useEditorStore((s) => s.selectedNodeId);
+  const selectionCount = useEditorStore((s) => s.selectedNodeIds.length);
   const addChildNode = useEditorStore((s) => s.addChildNode);
   const addSiblingNode = useEditorStore((s) => s.addSiblingNode);
   const addRootNode = useEditorStore((s) => s.addRootNode);
+  const setFocusedNode = useEditorStore((s) => s.setFocusedNode);
+  const deleteSelectedNodes = useEditorStore((s) => s.deleteSelectedNodes);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
 
   if (readOnly) return null;
+
+  const multi = selectionCount > 1;
+
+  function handleBulkDelete() {
+    deleteSelectedNodes();
+    toast(`${selectionCount} ideas deleted`, {
+      action: { label: "Undo", onClick: () => useEditorStore.getState().undo() },
+    });
+  }
 
   return (
     <div className="bg-card absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border p-1.5 shadow-lg">
@@ -55,7 +69,20 @@ export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
       </ToolbarButton>
       <AddImageButton endpoint={endpoint} />
 
-      {selectedNodeId && (
+      {multi && selectedNodeId && (
+        <>
+          <Divider />
+          <span className="text-muted-foreground px-2 text-xs font-medium whitespace-nowrap">
+            {selectionCount} selected
+          </span>
+          <NodeColorPicker nodeId={selectedNodeId} bulk />
+          <ToolbarButton label="Delete selected" onClick={handleBulkDelete} destructive>
+            <Trash2 className="size-4" />
+          </ToolbarButton>
+        </>
+      )}
+
+      {!multi && selectedNodeId && (
         <>
           <Divider />
           <ToolbarButton label="Add child" onClick={() => addChildNode(selectedNodeId)}>
@@ -64,7 +91,11 @@ export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
           <ToolbarButton label="Add sibling" onClick={() => addSiblingNode(selectedNodeId)}>
             <GitBranch className="size-4" />
           </ToolbarButton>
+          <ToolbarButton label="Focus on branch" onClick={() => setFocusedNode(selectedNodeId)}>
+            <Focus className="size-4" />
+          </ToolbarButton>
           <NodeColorPicker nodeId={selectedNodeId} />
+          <NodeIconPicker nodeId={selectedNodeId} />
           <NodeShapePicker nodeId={selectedNodeId} />
           <NodeSizePicker nodeId={selectedNodeId} />
           <Divider />

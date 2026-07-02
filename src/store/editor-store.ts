@@ -17,11 +17,22 @@ interface EditorState {
   title: string;
   nodes: MindmapNode[];
   edges: MindmapEdge[];
+  // The "primary" selected node — the last one selected, used by every single-node
+  // action (add child, change color, open inspector). Always the last entry of
+  // selectedNodeIds, or null when nothing is selected.
   selectedNodeId: string | null;
+  // Every selected node (1 for a normal click, many for a marquee/Cmd-click). The
+  // canvas mirrors this onto React Flow's node.selected so multi-drag moves them all
+  // together; bulk actions (delete/color) operate over the whole set.
+  selectedNodeIds: string[];
   // Selected link edge, if any — mutually exclusive with selectedNodeId (selecting
   // one clears the other). Only ever a link edge; hierarchy edges aren't selectable
   // through this, since they only change via the structural actions above.
   selectedEdgeId: string | null;
+  // The node currently isolated in focus mode (its subtree stays fully lit while the
+  // rest of the canvas dims), or null. A view state like inspectorNodeId — not part
+  // of undo/dirty tracking.
+  focusedNodeId: string | null;
   editingNodeId: string | null;
   // Which node's inspector panel (note/task/attachments) is open, if any — a view
   // toggle like editingNodeId, not content, so it's not part of undo/dirty tracking.
@@ -58,7 +69,11 @@ interface EditorState {
   commitBeforeDrag: () => void;
 
   selectNode: (id: string | null) => void;
+  // Replaces the whole selection set (React Flow's marquee/Cmd-click produce these
+  // via the canvas). Empty array clears the selection.
+  setSelectedNodeIds: (ids: string[]) => void;
   selectEdge: (id: string | null) => void;
+  setFocusedNode: (id: string | null) => void;
   setEditingNode: (id: string | null) => void;
   setInspectorNode: (id: string | null) => void;
   setTitle: (title: string) => void;
@@ -66,9 +81,15 @@ interface EditorState {
   updateNodeColor: (id: string, color: string) => void;
   updateNodeShape: (id: string, shape: MindmapNodeData["shape"]) => void;
   updateNodeSize: (id: string, size: MindmapNodeData["size"]) => void;
+  updateNodeIcon: (id: string, icon: MindmapNodeData["icon"]) => void;
   updateNodeNote: (id: string, note: string) => void;
   updateNodeTask: (id: string, task: MindmapNodeData["task"]) => void;
   toggleCollapsed: (id: string) => void;
+  // Bulk operations over the whole current selection (selectedNodeIds), each a single
+  // undo step. Color applies to every selected node; delete removes each node with its
+  // subtree.
+  updateSelectedNodesColor: (color: string) => void;
+  deleteSelectedNodes: () => void;
 
   // `at` overrides the usual computed offset-from-parent position — used when a
   // child is spawned by dragging a connection out to empty canvas, so it lands where
@@ -152,7 +173,9 @@ export const useEditorStore = create<EditorState>()(
     nodes: [],
     edges: [],
     selectedNodeId: null,
+    selectedNodeIds: [],
     selectedEdgeId: null,
+    focusedNodeId: null,
     editingNodeId: null,
     inspectorNodeId: null,
     readOnly: false,
@@ -170,7 +193,9 @@ export const useEditorStore = create<EditorState>()(
         nodes,
         edges,
         selectedNodeId: null,
+        selectedNodeIds: [],
         selectedEdgeId: null,
+        focusedNodeId: null,
         editingNodeId: null,
         inspectorNodeId: null,
         readOnly,
@@ -184,7 +209,14 @@ export const useEditorStore = create<EditorState>()(
 
     onNodesChange: (changes) =>
       set((s) => {
-        const meaningful = changes.some(
+        // React Flow drives selection (click, Cmd-click, Shift-drag marquee) by
+        // emitting `select` changes. We keep selection in the store rather than on the
+        // node objects (so programmatic actions like addChildNode can select too), so
+        // fold these deltas into selectedNodeIds instead of applying them to nodes.
+        const selectChanges = changes.filter((c) => c.type === "select");
+        const otherChanges = changes.filter((c) => c.type !== "select");
+
+        const meaningful = otherChanges.some(
           (c) =>
             c.type === "position" ||
             c.type === "add" ||
@@ -195,11 +227,27 @@ export const useEditorStore = create<EditorState>()(
             // (which carry no setAttributes and must NOT dirty the canvas or autosave).
             (c.type === "dimensions" && Boolean(c.setAttributes)),
         );
-        return {
-          nodes: applyNodeChanges(changes, s.nodes),
+
+        const next: Partial<EditorState> = {
+          nodes: applyNodeChanges(otherChanges, s.nodes),
           dirty: s.dirty || meaningful,
           revision: meaningful ? s.revision + 1 : s.revision,
         };
+
+        if (selectChanges.length > 0) {
+          const selected = new Set(s.selectedNodeIds);
+          for (const c of selectChanges) {
+            if (c.type !== "select") continue;
+            if (c.selected) selected.add(c.id);
+            else selected.delete(c.id);
+          }
+          const ids = [...selected];
+          next.selectedNodeIds = ids;
+          next.selectedNodeId = ids.length > 0 ? ids[ids.length - 1] : null;
+          if (ids.length > 0) next.selectedEdgeId = null;
+        }
+
+        return next;
       }),
 
     onEdgesChange: (changes) =>
@@ -214,8 +262,20 @@ export const useEditorStore = create<EditorState>()(
 
     // Each of these always clears the other, including on deselect (id === null) —
     // clicking empty canvas should drop both a node and an edge selection alike.
-    selectNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
-    selectEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
+    // selectNode collapses the whole multi-selection down to this one node (or none).
+    selectNode: (id) =>
+      set({ selectedNodeId: id, selectedNodeIds: id ? [id] : [], selectedEdgeId: null }),
+    setSelectedNodeIds: (ids) =>
+      set({
+        selectedNodeIds: ids,
+        // Primary = the last one selected; drives the single-node toolbar actions.
+        selectedNodeId: ids.length > 0 ? ids[ids.length - 1] : null,
+        selectedEdgeId: ids.length > 0 ? null : get().selectedEdgeId,
+      }),
+    selectEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null, selectedNodeIds: [] }),
+    // Not readOnly-guarded — a view-only visitor can still focus a branch to explore a
+    // large shared map, the same way toggleCollapsed and the inspector are allowed.
+    setFocusedNode: (id) => set({ focusedNodeId: id }),
     setEditingNode: (id) => {
       if (get().readOnly) return;
       set({ editingNodeId: id });
@@ -280,6 +340,20 @@ export const useEditorStore = create<EditorState>()(
       commitHistory(state.nodes, state.edges);
       set((s) => ({
         nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, size } } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    updateNodeIcon: (id, icon) => {
+      const state = get();
+      if (state.readOnly) return;
+      const target = state.nodes.find((n) => n.id === id);
+      if (!target || target.data.icon === icon) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, icon } } : n)),
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -357,6 +431,7 @@ export const useEditorStore = create<EditorState>()(
         nodes: [...s.nodes, newNode],
         edges: [...s.edges, newEdge],
         selectedNodeId: id,
+        selectedNodeIds: [id],
         editingNodeId: id,
         dirty: true,
         revision: s.revision + 1,
@@ -399,6 +474,7 @@ export const useEditorStore = create<EditorState>()(
       set((s) => ({
         nodes: [...s.nodes, newNode],
         selectedNodeId: id,
+        selectedNodeIds: [id],
         editingNodeId: id,
         dirty: true,
         revision: s.revision + 1,
@@ -437,6 +513,7 @@ export const useEditorStore = create<EditorState>()(
         nodes: [...s.nodes, newNode],
         edges: [...s.edges, newEdge],
         selectedNodeId: id,
+        selectedNodeIds: [id],
         editingNodeId: id,
         dirty: true,
         revision: s.revision + 1,
@@ -476,6 +553,7 @@ export const useEditorStore = create<EditorState>()(
       set((s) => ({
         nodes: [...s.nodes, newNode],
         selectedNodeId: id,
+        selectedNodeIds: [id],
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -595,14 +673,59 @@ export const useEditorStore = create<EditorState>()(
           .filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target))
           .map((e) => e.id),
       );
+      set((s) => {
+        const remainingSelected = s.selectedNodeIds.filter((id) => !idsToRemove.has(id));
+        return {
+          nodes: s.nodes.filter((n) => !idsToRemove.has(n.id)),
+          edges: s.edges.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target)),
+          selectedNodeIds: remainingSelected,
+          selectedNodeId: remainingSelected.length > 0 ? remainingSelected[remainingSelected.length - 1] : null,
+          selectedEdgeId: s.selectedEdgeId && !survivingEdgeIds.has(s.selectedEdgeId) ? null : s.selectedEdgeId,
+          editingNodeId: s.editingNodeId && idsToRemove.has(s.editingNodeId) ? null : s.editingNodeId,
+          inspectorNodeId:
+            s.inspectorNodeId && idsToRemove.has(s.inspectorNodeId) ? null : s.inspectorNodeId,
+          focusedNodeId: s.focusedNodeId && idsToRemove.has(s.focusedNodeId) ? null : s.focusedNodeId,
+          dirty: true,
+          revision: s.revision + 1,
+        };
+      });
+    },
+
+    updateSelectedNodesColor: (color) => {
+      const state = get();
+      if (state.readOnly) return;
+      const targets = new Set(state.selectedNodeIds);
+      if (targets.size === 0) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        nodes: s.nodes.map((n) => (targets.has(n.id) ? { ...n, data: { ...n.data, color } } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    deleteSelectedNodes: () => {
+      const state = get();
+      if (state.readOnly || state.selectedNodeIds.length === 0) return;
+
+      commitHistory(state.nodes, state.edges);
+
+      // Union of every selected node's subtree — deleting a parent already removes its
+      // children, so overlapping selections collapse to the same removal set cleanly.
+      const idsToRemove = new Set<string>();
+      for (const id of state.selectedNodeIds) {
+        for (const sub of getSubtreeIds(state.edges, id)) idsToRemove.add(sub);
+      }
+
       set((s) => ({
         nodes: s.nodes.filter((n) => !idsToRemove.has(n.id)),
         edges: s.edges.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target)),
-        selectedNodeId: s.selectedNodeId && idsToRemove.has(s.selectedNodeId) ? null : s.selectedNodeId,
-        selectedEdgeId: s.selectedEdgeId && !survivingEdgeIds.has(s.selectedEdgeId) ? null : s.selectedEdgeId,
+        selectedNodeIds: [],
+        selectedNodeId: null,
         editingNodeId: s.editingNodeId && idsToRemove.has(s.editingNodeId) ? null : s.editingNodeId,
-        inspectorNodeId:
-          s.inspectorNodeId && idsToRemove.has(s.inspectorNodeId) ? null : s.inspectorNodeId,
+        inspectorNodeId: s.inspectorNodeId && idsToRemove.has(s.inspectorNodeId) ? null : s.inspectorNodeId,
+        focusedNodeId: s.focusedNodeId && idsToRemove.has(s.focusedNodeId) ? null : s.focusedNodeId,
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -655,6 +778,7 @@ export const useEditorStore = create<EditorState>()(
         nodes: [...s.nodes, ...clonedNodes],
         edges: [...s.edges, ...clonedEdges, connectingEdge],
         selectedNodeId: rootCloneId,
+        selectedNodeIds: [rootCloneId],
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -683,9 +807,11 @@ export const useEditorStore = create<EditorState>()(
         nodes,
         edges,
         selectedNodeId: null,
+        selectedNodeIds: [],
         selectedEdgeId: null,
         editingNodeId: null,
         inspectorNodeId: null,
+        focusedNodeId: null,
         dirty: true,
         revision: s.revision + 1,
       }));
@@ -696,18 +822,23 @@ export const useEditorStore = create<EditorState>()(
       if (state.readOnly) return;
 
       const stillExists = (id: string | null) => id !== null && nodes.some((n) => n.id === id);
-      set((s) => ({
-        nodes,
-        edges,
-        // A remote edit may have deleted whatever this tab had selected/open for
-        // editing — drop the reference rather than pointing at a node that's gone.
-        selectedNodeId: stillExists(s.selectedNodeId) ? s.selectedNodeId : null,
-        selectedEdgeId: s.selectedEdgeId && edges.some((e) => e.id === s.selectedEdgeId) ? s.selectedEdgeId : null,
-        editingNodeId: stillExists(s.editingNodeId) ? s.editingNodeId : null,
-        inspectorNodeId: stillExists(s.inspectorNodeId) ? s.inspectorNodeId : null,
-        dirty: true,
-        revision: s.revision + 1,
-      }));
+      set((s) => {
+        const survivingSelected = s.selectedNodeIds.filter((id) => nodes.some((n) => n.id === id));
+        return {
+          nodes,
+          edges,
+          // A remote edit may have deleted whatever this tab had selected/open for
+          // editing — drop the reference rather than pointing at a node that's gone.
+          selectedNodeIds: survivingSelected,
+          selectedNodeId: survivingSelected.length > 0 ? survivingSelected[survivingSelected.length - 1] : null,
+          selectedEdgeId: s.selectedEdgeId && edges.some((e) => e.id === s.selectedEdgeId) ? s.selectedEdgeId : null,
+          editingNodeId: stillExists(s.editingNodeId) ? s.editingNodeId : null,
+          inspectorNodeId: stillExists(s.inspectorNodeId) ? s.inspectorNodeId : null,
+          focusedNodeId: stillExists(s.focusedNodeId) ? s.focusedNodeId : null,
+          dirty: true,
+          revision: s.revision + 1,
+        };
+      });
     },
 
     undo: () => {
@@ -719,9 +850,11 @@ export const useEditorStore = create<EditorState>()(
         nodes: restored.nodes,
         edges: restored.edges,
         selectedNodeId: null,
+        selectedNodeIds: [],
         selectedEdgeId: null,
         editingNodeId: null,
         inspectorNodeId: null,
+        focusedNodeId: null,
         dirty: true,
         revision: state.revision + 1,
       });
@@ -736,9 +869,11 @@ export const useEditorStore = create<EditorState>()(
         nodes: restored.nodes,
         edges: restored.edges,
         selectedNodeId: null,
+        selectedNodeIds: [],
         selectedEdgeId: null,
         editingNodeId: null,
         inspectorNodeId: null,
+        focusedNodeId: null,
         dirty: true,
         revision: state.revision + 1,
       });

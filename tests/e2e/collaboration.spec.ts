@@ -19,6 +19,7 @@ test("two connected tabs on the same mindmap sync edits and presence live", asyn
   await expect(ownerPage).toHaveURL(/\/dashboard$/);
 
   await ownerPage.getByRole("button", { name: "New mindmap" }).click();
+  await ownerPage.getByRole("button", { name: /Blank/ }).click();
   await expect(ownerPage).toHaveURL(/\/mindmap\//);
   await expect(ownerPage.locator(".react-flow__node")).toHaveCount(1);
   const mindmapUrl = ownerPage.url();

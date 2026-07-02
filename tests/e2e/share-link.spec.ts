@@ -16,6 +16,7 @@ test("a VIEW share link is read-only and an EDIT link is editable, both for a lo
   await expect(ownerPage).toHaveURL(/\/dashboard$/);
 
   await ownerPage.getByRole("button", { name: "New mindmap" }).click();
+  await ownerPage.getByRole("button", { name: /Blank/ }).click();
   await expect(ownerPage).toHaveURL(/\/mindmap\//);
   await expect(ownerPage.locator(".react-flow__node")).toHaveCount(1);
 

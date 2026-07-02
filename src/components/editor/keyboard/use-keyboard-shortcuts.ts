@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { toast } from "sonner";
 
 import { useEditorStore } from "@/store/editor-store";
 import { forceSave } from "@/store/autosave";
@@ -41,9 +42,33 @@ export function useKeyboardShortcuts(endpoint: string) {
 
       if (editing) return;
 
+      // Escape steps back out: first exit focus mode, else clear the selection.
+      if (e.key === "Escape") {
+        if (store.focusedNodeId) {
+          store.setFocusedNode(null);
+          return;
+        }
+        if (store.selectedNodeIds.length > 0 || store.selectedEdgeId) {
+          store.selectNode(null);
+          return;
+        }
+        return;
+      }
+
       if ((e.key === "Delete" || e.key === "Backspace") && store.selectedEdgeId) {
         e.preventDefault();
         removeLinkEdgeWithUndo(store.selectedEdgeId);
+        return;
+      }
+
+      // A marquee/Cmd-click selection of several nodes deletes as one undoable step.
+      if ((e.key === "Delete" || e.key === "Backspace") && store.selectedNodeIds.length > 1) {
+        e.preventDefault();
+        const count = store.selectedNodeIds.length;
+        store.deleteSelectedNodes();
+        toast(`${count} ideas deleted`, {
+          action: { label: "Undo", onClick: () => useEditorStore.getState().undo() },
+        });
         return;
       }
 

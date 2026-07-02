@@ -11,6 +11,7 @@ import { useFetchAttachments } from "@/components/editor/use-attachments";
 import { EditorHeader } from "@/components/editor/editor-header";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
+import { FocusModeBanner } from "@/components/editor/focus-mode-banner";
 import { NodeInspectorPanel } from "@/components/editor/inspector/node-inspector-panel";
 import { OutlineView } from "@/components/editor/outline/outline-view";
 import { LiveblocksRoomProvider } from "@/components/editor/collab/liveblocks-room-provider";
@@ -83,6 +84,7 @@ export function MindmapEditorShell({
           {viewMode === "canvas" ? (
             <>
               <MindmapCanvas />
+              <FocusModeBanner />
               <FloatingToolbar endpoint={`/api/mindmaps/${mindmap.id}`} />
               <NodeInspectorPanel endpoint={`/api/mindmaps/${mindmap.id}`} />
             </>

@@ -16,6 +16,8 @@ test("register, create a mindmap, add nodes via keyboard, and confirm persistenc
   await expect(page.getByText(/Welcome back/)).toBeVisible();
 
   await page.getByRole("button", { name: "New mindmap" }).click();
+  // "New mindmap" now opens a template picker — start from a blank canvas.
+  await page.getByRole("button", { name: /Blank/ }).click();
   await expect(page).toHaveURL(/\/mindmap\//);
 
   const rootNode = page.locator(".react-flow__node").first();

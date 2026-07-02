@@ -6,6 +6,7 @@ import { jsonOk, jsonError, jsonValidationError } from "@/lib/api-response";
 import { createMindmapSchema } from "@/lib/validations/mindmap";
 import { encodeContent } from "@/lib/mindmap/content-codec";
 import { createSeedContent } from "@/lib/mindmap/defaults";
+import { getTemplate } from "@/lib/mindmap/templates";
 import type { MindmapSummary } from "@/types/mindmap";
 
 export async function GET() {
@@ -47,10 +48,16 @@ export async function POST(request: NextRequest) {
   const parsed = createMindmapSchema.safeParse(body);
   if (!parsed.success) return jsonValidationError(parsed.error);
 
+  // A known template seeds its content and (unless the caller named one) its title;
+  // an unknown/absent template falls back to the plain single-node seed.
+  const template = parsed.data.templateId ? getTemplate(parsed.data.templateId) : undefined;
+  const title = parsed.data.title ?? template?.name ?? "Untitled Mindmap";
+  const content = template ? template.build() : createSeedContent();
+
   const mindmap = await prisma.mindmap.create({
     data: {
-      title: parsed.data.title ?? "Untitled Mindmap",
-      content: encodeContent(createSeedContent()),
+      title,
+      content: encodeContent(content),
       ownerId: session.user.id,
     },
   });

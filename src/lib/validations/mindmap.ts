@@ -90,6 +90,9 @@ export type MindmapContentInput = z.infer<typeof mindmapContentSchema>;
 
 export const createMindmapSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
+  // Optional starter template id (see lib/mindmap/templates.ts). An unknown id is
+  // simply ignored by the create route, which falls back to the default seed.
+  templateId: z.string().max(50).optional(),
 });
 
 export const updateMindmapSchema = z.object({
