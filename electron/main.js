@@ -109,15 +109,24 @@ function ensureFirstRunSetup(userDataDir) {
     fs.writeFileSync(envPath, CONFIG_ENV_TEMPLATE);
   }
 
-  // The server code is re-extracted whenever the installed app version changes (a
-  // fresh install, or the user replaced the .app with a newer .dmg) so an update
-  // actually takes effect — the db/config/env above persist across that untouched.
+  // The server code is re-extracted whenever the bundled tar changes, so replacing
+  // the .app with a newer build actually takes effect — the db/config/env above
+  // persist across that untouched. This is keyed off the tar's own size+mtime, NOT
+  // app.getVersion(): the version stays "0.1.0" across rebuilds during active
+  // development, so version-gating silently ran stale code from the first install
+  // forever. macOS preserves mtime through both `ditto` and a Finder/DMG drag-copy,
+  // and every fresh build writes a new tar (new content → new size, always a new
+  // mtime), so the fingerprint reliably changes exactly when the code does. A cheap
+  // stat, so it costs nothing on an unchanged relaunch (no hashing the 66MB archive).
   const appDir = path.join(userDataDir, "app");
-  if (config.extractedVersion !== app.getVersion() || !fs.existsSync(path.join(appDir, "server.js"))) {
+  const tarStat = fs.statSync(getStandaloneTarPath());
+  const tarFingerprint = `${tarStat.size}:${tarStat.mtimeMs}`;
+  if (config.extractedTar !== tarFingerprint || !fs.existsSync(path.join(appDir, "server.js"))) {
     fs.rmSync(appDir, { recursive: true, force: true });
     fs.mkdirSync(appDir, { recursive: true });
     execFileSync("tar", ["-xzf", getStandaloneTarPath(), "-C", appDir]);
-    config.extractedVersion = app.getVersion();
+    config.extractedTar = tarFingerprint;
+    delete config.extractedVersion; // retire the old version-based key
   }
 
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
