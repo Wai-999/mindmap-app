@@ -2,7 +2,19 @@
 
 import { memo, useEffect, useRef } from "react";
 import { Handle, Position, NodeResizer, useConnection, type NodeProps } from "@xyflow/react";
-import { ChevronRight, Info, StickyNote, CheckSquare, Square, ImageIcon } from "lucide-react";
+import {
+  ChevronRight,
+  Info,
+  StickyNote,
+  CheckSquare,
+  Square,
+  ImageIcon,
+  File as FileIcon,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+} from "lucide-react";
 
 import type { MindmapNode as MindmapNodeType, NodeSize } from "@/types/mindmap";
 import { useEditorStore } from "@/store/editor-store";
@@ -77,6 +89,31 @@ const SIZE_PAD: Record<NodeSize, string> = { small: "px-3 py-1.5", medium: "px-4
 // derived from the image's own aspect ratio (object-contain, capped max-height).
 const SIZE_IMAGE_WIDTH: Record<NodeSize, number> = { small: 150, medium: 240, large: 360 };
 
+// Point lists for every non-rectangular shape, in a shared 0-100 viewBox — the same
+// technique already established for the diamond: an SVG polygon drawn behind the
+// card's content, with preserveAspectRatio="none" so it stretches to whatever the
+// node's actual (possibly manually resized) box is, rather than staying square.
+const POLYGON_SHAPES = new Set(["diamond", "triangle", "pentagon", "parallelogram", "chevron"]);
+const SHAPE_POINTS: Record<string, string> = {
+  diamond: "50,3 97,50 50,97 3,50",
+  triangle: "50,3 97,97 3,97",
+  pentagon: "50,3 96,35 78,89 22,89 4,35",
+  parallelogram: "20,10 100,10 80,90 0,90",
+  chevron: "0,25 60,25 60,5 100,50 60,95 60,75 0,75",
+};
+
+// Perceived-brightness check (YIQ) so a sticky note's text stays legible against
+// whichever palette color it's using as its full background fill — the palette
+// (see NODE_COLORS) spans everything from amber to indigo, too wide a range to
+// assume one text color always reads well.
+function readableTextColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 150 ? "#1f2937" : "#ffffff";
+}
+
 function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // Selection is driven entirely by our own store (selectedNodeId), not React Flow's
   // internal node.selected flag — store actions like addChildNode change selection
@@ -93,6 +130,9 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const size = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.size ?? "medium");
   const icon = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.icon);
   const imageOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.imageOnly ?? false);
+  const fileOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.fileOnly ?? false);
+  const textOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.textOnly ?? false);
+  const sticky = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.sticky ?? false);
   // Explicit dimensions once an image node has been manually resized (NodeResizer
   // writes these top-level props via onNodesChange). Undefined until first resize —
   // the node is content-sized (image at its preset width) up to that point.
@@ -106,6 +146,9 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const imageUrl = useEditorStore(
     (s) => s.attachments.find((a) => a.nodeId === id && a.mimeType.startsWith("image/"))?.url,
   );
+  // A fileOnly node's own (non-image) upload — just its size, to show alongside
+  // the filename already carried in the node's label.
+  const fileSize = useEditorStore((s) => s.attachments.find((a) => a.nodeId === id)?.size);
   const childCount = useEditorStore((s) => getChildIds(s.edges, id).length);
   const hiddenDescendantCount = useEditorStore((s) =>
     collapsed ? getDescendantIds(s.edges, id).length : 0,
@@ -129,6 +172,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const updateNodeLabel = useEditorStore((s) => s.updateNodeLabel);
   const toggleCollapsed = useEditorStore((s) => s.toggleCollapsed);
   const commitBeforeDrag = useEditorStore((s) => s.commitBeforeDrag);
+  const addDirectionalNode = useEditorStore((s) => s.addDirectionalNode);
 
   const editableRef = useRef<HTMLDivElement>(null);
 
@@ -204,6 +248,61 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     </button>
   );
 
+  // One-tap "add something in this exact direction," shown only while selected —
+  // complements (doesn't replace) dragging from the border strips above. Left/right
+  // add a real hierarchy child on that explicit side; up/down add a link connection,
+  // since the LR tree layout has no vertical-branching concept. Positioned further
+  // out than the existing corner info button and the right-side collapse toggle so
+  // none of the three ever overlap.
+  const directionalArrows = selected && !readOnly && (
+    <>
+      <button
+        type="button"
+        className="absolute -top-9 left-1/2 flex size-6 -translate-x-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          addDirectionalNode(id, "up");
+        }}
+        aria-label="Add idea above"
+      >
+        <ArrowUp className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        className="absolute -bottom-9 left-1/2 flex size-6 -translate-x-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          addDirectionalNode(id, "down");
+        }}
+        aria-label="Add idea below"
+      >
+        <ArrowDown className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        className="absolute top-1/2 -left-9 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          addDirectionalNode(id, "left");
+        }}
+        aria-label="Add idea to the left"
+      >
+        <ArrowLeft className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        className="absolute top-1/2 -right-9 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          addDirectionalNode(id, "right");
+        }}
+        aria-label="Add idea to the right"
+      >
+        <ArrowRight className="size-3.5" />
+      </button>
+    </>
+  );
+
   // A standalone image node: just the uploaded image (or a placeholder until the
   // upload lands), no label/dot/card chrome. Still fully a node — draggable,
   // connectable via the shared strips, selectable, deletable, and freely resizable
@@ -256,6 +355,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           </div>
         )}
         {infoButton}
+        {directionalArrows}
         {/* Rendered LAST so its corner handles sit above the connection strips in
             DOM order — the strips have pointer-events:all and would otherwise
             intercept a corner drag (starting a new connection instead of resizing).
@@ -277,7 +377,178 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     );
   }
 
-  const isDiamond = shape === "diamond";
+  // A generic file node: a compact chip (icon + filename + size), the non-image
+  // counterpart of imageOnly — both created through the same "Add file" upload
+  // button (see addFileNode), split only by whether the upload was an image. The
+  // file itself lives in the usual attachments list; opening/downloading it is
+  // done from there (Open details), same as any other attachment.
+  if (fileOnly) {
+    const bytes = fileSize ?? 0;
+    const sizeLabel =
+      bytes < 1024
+        ? `${bytes} B`
+        : bytes < 1024 * 1024
+          ? `${(bytes / 1024).toFixed(1)} KB`
+          : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return (
+      <div
+        className="group relative flex items-center gap-2 rounded-lg border-2 bg-card px-3 py-2 shadow-sm transition-shadow hover:shadow-md"
+        style={{
+          borderColor: selected ? (color ?? "var(--primary)") : "transparent",
+          boxShadow: remoteSelectorColors[0]
+            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+            : undefined,
+        }}
+      >
+        {connectionHandles}
+        <FileIcon className="text-muted-foreground size-5 shrink-0" />
+        <div className="min-w-0">
+          <div className="max-w-[180px] truncate text-sm font-medium">{label || "Untitled file"}</div>
+          {fileSize != null && <div className="text-muted-foreground text-xs">{sizeLabel}</div>}
+        </div>
+        {infoButton}
+        {directionalArrows}
+      </div>
+    );
+  }
+
+  // A standalone free-floating text node: just the label itself, no card
+  // background/border/shadow or color dot — mirrors the imageOnly branch above
+  // (same "hide all chrome, keep everything else" shape). Editing works exactly
+  // like the label in the main render path below (click/double-click to edit,
+  // Enter/Escape to commit).
+  if (textOnly) {
+    const hasExplicitSize = explicitWidth != null && explicitHeight != null;
+    return (
+      <div
+        className={cn("group relative", hasExplicitSize && "size-full")}
+        style={{
+          boxShadow: remoteSelectorColors[0]
+            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+            : undefined,
+          borderRadius: 8,
+        }}
+      >
+        {connectionHandles}
+        {isEditing ? (
+          <div
+            ref={editableRef}
+            contentEditable
+            suppressContentEditableWarning
+            className={cn(
+              "leading-snug outline-none",
+              SIZE_TEXT[size],
+              hasExplicitSize ? "size-full" : cn("min-w-[4ch]", SIZE_WIDTH[size]),
+            )}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "Escape") {
+                e.preventDefault();
+                (e.target as HTMLDivElement).blur();
+              }
+              e.stopPropagation();
+            }}
+          >
+            {label}
+          </div>
+        ) : (
+          <span
+            className={cn(
+              "block leading-snug break-words",
+              SIZE_TEXT[size],
+              hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
+              !label && "text-muted-foreground italic",
+            )}
+          >
+            {label || "Empty text"}
+          </span>
+        )}
+        {infoButton}
+        {directionalArrows}
+        {selected && !readOnly && (
+          <NodeResizer
+            color={color ?? "var(--primary)"}
+            minWidth={40}
+            minHeight={24}
+            handleStyle={{ width: 12, height: 12, borderRadius: 3, zIndex: 20 }}
+            onResizeStart={commitBeforeDrag}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // A solid-color sticky note: the node's own color IS the whole visible fill,
+  // full-bleed, with no card border/shadow — unlike every other node kind, where
+  // color is just a small accent (dot, border, edge stroke). Text color is
+  // computed for contrast against whichever palette color this note has.
+  if (sticky) {
+    const hasExplicitSize = explicitWidth != null && explicitHeight != null;
+    const bg = color ?? "#f59e0b";
+    const textColor = readableTextColor(bg);
+    return (
+      <div
+        className={cn("group relative rounded-lg p-4", hasExplicitSize && "size-full")}
+        style={{
+          backgroundColor: bg,
+          color: textColor,
+          boxShadow: remoteSelectorColors[0]
+            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+            : selected
+              ? `0 0 0 2px var(--card), 0 0 0 4px ${bg}`
+              : undefined,
+        }}
+      >
+        {connectionHandles}
+        {isEditing ? (
+          <div
+            ref={editableRef}
+            contentEditable
+            suppressContentEditableWarning
+            className={cn(
+              "leading-snug outline-none",
+              SIZE_TEXT[size],
+              hasExplicitSize ? "size-full" : cn("min-w-[6ch]", SIZE_WIDTH[size]),
+            )}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "Escape") {
+                e.preventDefault();
+                (e.target as HTMLDivElement).blur();
+              }
+              e.stopPropagation();
+            }}
+          >
+            {label}
+          </div>
+        ) : (
+          <span
+            className={cn(
+              "block leading-snug break-words",
+              SIZE_TEXT[size],
+              hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
+              !label && "italic opacity-60",
+            )}
+          >
+            {label || "Empty note"}
+          </span>
+        )}
+        {infoButton}
+        {directionalArrows}
+        {selected && !readOnly && (
+          <NodeResizer
+            color={textColor}
+            minWidth={100}
+            minHeight={80}
+            handleStyle={{ width: 12, height: 12, borderRadius: 3, zIndex: 20 }}
+            onResizeStart={commitBeforeDrag}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const isPolygon = POLYGON_SHAPES.has(shape);
   // Same explicit-dimensions convention as the image node above: undefined until the
   // card is manually resized (NodeResizer below), content-sized via the S/M/L preset
   // up to that point. Once resized, the preset's own min/max-width bounds no longer
@@ -290,7 +561,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         "group relative text-card-foreground shadow-sm transition-shadow",
         hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
         SIZE_TEXT[size],
-        isDiamond
+        isPolygon
           ? "bg-transparent px-9 py-7"
           : cn(
               "border-2 bg-card",
@@ -300,9 +571,9 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         selected ? "shadow-md" : "hover:shadow-md",
       )}
       style={{
-        // The diamond's outline is drawn by its own SVG polygon below instead —
-        // this div stays borderless so no rectangular edge shows through its points.
-        borderColor: isDiamond ? undefined : selected ? (color ?? "var(--primary)") : "transparent",
+        // A polygon's outline is drawn by its own SVG below instead — this div stays
+        // borderless so no rectangular edge shows through its points.
+        borderColor: isPolygon ? undefined : selected ? (color ?? "var(--primary)") : "transparent",
         // Ring sits outside the node's own border (a card-colored gap, then the
         // collaborator's color) so local selection and remote selection never visually
         // collide, even when both are true at once.
@@ -311,8 +582,8 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           : undefined,
       }}
     >
-      {isDiamond && (
-        // A rectangular border can't follow a diamond's diagonal edges, so the
+      {isPolygon && (
+        // A rectangular border can't follow a diagonal-edged shape, so the
         // shape/fill/stroke are drawn here instead, sized to the card's own
         // bounding box — the actual content (and the connection handles below,
         // which anchor to that same box) stays in normal, unrotated layout on top.
@@ -322,7 +593,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           preserveAspectRatio="none"
         >
           <polygon
-            points="50,3 97,50 50,97 3,50"
+            points={SHAPE_POINTS[shape]}
             className="fill-card"
             stroke={selected ? (color ?? "var(--primary)") : "transparent"}
             strokeWidth={3}
@@ -352,7 +623,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             )}
           />
         ) : (
-          // Pill/diamond outlines don't have a flat top edge to bleed a rectangular
+          // Pill/polygon outlines don't have a flat top edge to bleed a rectangular
           // image into — an inset thumbnail avoids the two shapes visibly clashing.
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt="" className="mb-2 h-16 w-full rounded-md object-cover" />

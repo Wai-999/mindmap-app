@@ -94,9 +94,21 @@ interface EditorState {
 
   // `at` overrides the usual computed offset-from-parent position — used when a
   // child is spawned by dragging a connection out to empty canvas, so it lands where
-  // the user dropped it rather than in the fixed grid spot.
-  addChildNode: (parentId: string, at?: { x: number; y: number }) => string | null;
+  // the user dropped it rather than in the fixed grid spot. `forcedSide` overrides
+  // the usual alternate/inherit side rule instead — used by the directional arrow
+  // buttons, where "add to the left" should always mean left, full stop.
+  addChildNode: (
+    parentId: string,
+    at?: { x: number; y: number },
+    forcedSide?: BranchSide,
+  ) => string | null;
   addSiblingNode: (nodeId: string) => string | null;
+  // The four directional arrow buttons shown on a selected node. Left/right forces a
+  // hierarchy child onto that explicit side (overriding the usual auto-placement).
+  // Up/down has no tree-layout equivalent (the LR algorithm doesn't branch
+  // vertically), so those create a link connection instead — still visually "in that
+  // direction," just not part of the structural tree.
+  addDirectionalNode: (nodeId: string, direction: "up" | "down" | "left" | "right") => string | null;
   // A new independent primary idea — no parent edge. Also the fallback target when
   // addSiblingNode is called on a root (a root's "sibling" is a new root).
   // `at` is a flow-coordinate point to center the new idea on (e.g. a double-clicked
@@ -115,11 +127,26 @@ interface EditorState {
   // becoming a strict parent/child relationship. Returns the new node's id, or null
   // if rejected (missing source node, or readOnly).
   addLinkedNode: (fromNodeId: string, position: { x: number; y: number }) => string | null;
-  // A standalone image node (imageOnly) placed on the canvas — parentless, like a
-  // root, but rendered as just its image once the attachment upload completes. `label`
-  // is the original filename, kept for the outline view/exports. `at` centers it on a
-  // point (cursor/viewport), else falls back to the same computed spot addRootNode uses.
-  addImageNode: (label: string, at?: { x: number; y: number }) => string | null;
+  // A standalone file node placed on the canvas — parentless, like a root. `label`
+  // is the original filename, kept for the outline view/exports. `isImage` (the
+  // upload's mime type, checked by the caller) decides which of the two render
+  // treatments it gets: imageOnly (full image preview, once the attachment upload
+  // completes) or fileOnly (a compact icon + filename chip) — both share this one
+  // action/entry point, generalized from the image-only original. `at` centers it
+  // on a point (cursor/viewport), else falls back to the same computed spot
+  // addRootNode uses.
+  addFileNode: (label: string, isImage: boolean, at?: { x: number; y: number }) => string | null;
+  // A standalone free-floating text node (textOnly) — parentless like a root,
+  // rendered as just its bare label with no card chrome. Unlike addFileNode, this
+  // selects straight into edit mode since there's real text to type immediately.
+  // `at` centers it on a point (cursor/viewport), else falls back to the same
+  // computed spot addRootNode uses.
+  addTextNode: (at?: { x: number; y: number }) => string | null;
+  // A standalone sticky note (sticky) — parentless like a root, rendered as a solid
+  // color block (its own `color`, full-bleed) with no card border/shadow. Selects
+  // straight into edit mode, same as addTextNode. `at` centers it on a point
+  // (cursor/viewport), else falls back to the same computed spot addRootNode uses.
+  addStickyNote: (at?: { x: number; y: number }) => string | null;
   removeLinkEdge: (edgeId: string) => void;
   // Re-targets an existing link edge's endpoints (dragging one end to a different
   // node) — never applies to hierarchy edges, which only change via the structural
@@ -403,7 +430,7 @@ export const useEditorStore = create<EditorState>()(
         revision: s.revision + 1,
       })),
 
-    addChildNode: (parentId, at) => {
+    addChildNode: (parentId, at, forcedSide) => {
       const state = get();
       if (state.readOnly) return null;
       const parent = state.nodes.find((n) => n.id === parentId);
@@ -411,13 +438,15 @@ export const useEditorStore = create<EditorState>()(
 
       commitHistory(state.nodes, state.edges);
 
-      // `at` (an explicit drop point, e.g. drag-to-empty-canvas) infers its own side
-      // from where it actually landed rather than the usual alternate/inherit rule —
-      // it should never fight the position the user just chose. Otherwise: a root's
-      // direct children alternate left/right; a deeper node's children all continue
-      // the same direction its own branch already established.
-      const side: BranchSide = at ? (at.x < parent.position.x ? "left" : "right")
-        : pickChildSide(state.nodes, state.edges, parentId);
+      // Priority: an explicit drop point (drag-to-empty-canvas) infers its own side
+      // from where it actually landed — it should never fight the position the user
+      // just chose. Then an explicit forced side (the directional arrow buttons) —
+      // "add to the left" always means left. Otherwise the usual auto-placement: a
+      // root's direct children alternate left/right; a deeper node's children all
+      // continue the same direction its own branch already established.
+      const side: BranchSide = at
+        ? (at.x < parent.position.x ? "left" : "right")
+        : (forcedSide ?? pickChildSide(state.nodes, state.edges, parentId));
       const siblingsOnSameSide = countChildrenOnSide(state.nodes, state.edges, parentId, side);
       const id = generateNodeId();
       const newNode: MindmapNode = {
@@ -531,14 +560,47 @@ export const useEditorStore = create<EditorState>()(
       return id;
     },
 
-    addImageNode: (label, at) => {
+    addDirectionalNode: (nodeId, direction) => {
+      const state = get();
+      if (state.readOnly) return null;
+      const node = state.nodes.find((n) => n.id === nodeId);
+      if (!node) return null;
+
+      if (direction === "left" || direction === "right") {
+        // Reuses addChildNode's own side-aware placement/stacking, just forcing the
+        // side instead of letting it infer one — "add to the left" should always
+        // mean left, overriding whatever the auto-alternation would have picked.
+        return get().addChildNode(nodeId, undefined, direction);
+      }
+
+      // Up/down: a link connection, not a hierarchy child — the LR tree layout has
+      // no vertical-branching concept to fit these into, so they can't become real
+      // tree children the way left/right can without inventing a whole new layout
+      // dimension. Still visually "in that direction," just not structural.
+      const GAP = 180;
+      const STACK = 70;
+      const existingInDirection = state.edges.filter((e) => {
+        const otherId = e.source === nodeId ? e.target : e.target === nodeId ? e.source : null;
+        const other = otherId ? state.nodes.find((n) => n.id === otherId) : undefined;
+        if (!other) return false;
+        return direction === "down" ? other.position.y > node.position.y : other.position.y < node.position.y;
+      }).length;
+
+      const position = {
+        x: node.position.x + existingInDirection * STACK,
+        y: node.position.y + (direction === "down" ? GAP : -GAP),
+      };
+      return get().addLinkedNode(nodeId, position);
+    },
+
+    addFileNode: (label, isImage, at) => {
       const state = get();
       if (state.readOnly) return null;
 
       commitHistory(state.nodes, state.edges);
 
-      // Same cursor-preferred placement as addRootNode — the image lands where the
-      // user is pointing when they trigger "Add image", else a computed fresh spot.
+      // Same cursor-preferred placement as addRootNode — the file lands where the
+      // user is pointing when they trigger "Add file", else a computed fresh spot.
       const cursor = at ?? getLastCanvasPoint();
       const minX = state.nodes.length > 0 ? Math.min(...state.nodes.map((n) => n.position.x)) : 0;
       const maxY = state.nodes.length > 0 ? Math.max(...state.nodes.map((n) => n.position.y)) : 0;
@@ -551,10 +613,15 @@ export const useEditorStore = create<EditorState>()(
         id,
         type: "mindmapNode",
         position,
-        // imageOnly hides all card chrome; the label (filename) is kept for the
-        // outline view/exports. No color dot is shown, but a color is still assigned
-        // so a link edge drawn FROM this image has a sensible stroke color.
-        data: { label, imageOnly: true, color: resolveNewRootColor(state.nodes, state.edges) },
+        // imageOnly/fileOnly both hide all card chrome; the label (filename) is
+        // kept for the outline view/exports. No color dot is shown, but a color is
+        // still assigned so a link edge drawn FROM this node has a sensible stroke
+        // color.
+        data: {
+          label,
+          ...(isImage ? { imageOnly: true } : { fileOnly: true }),
+          color: resolveNewRootColor(state.nodes, state.edges),
+        },
       };
 
       // Not selected-into-edit like a text idea (there's no label to type) — just
@@ -563,6 +630,82 @@ export const useEditorStore = create<EditorState>()(
         nodes: [...s.nodes, newNode],
         selectedNodeId: id,
         selectedNodeIds: [id],
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+
+      return id;
+    },
+
+    addTextNode: (at) => {
+      const state = get();
+      if (state.readOnly) return null;
+
+      commitHistory(state.nodes, state.edges);
+
+      // Same cursor-preferred placement as addRootNode/addFileNode.
+      const cursor = at ?? getLastCanvasPoint();
+      const minX = state.nodes.length > 0 ? Math.min(...state.nodes.map((n) => n.position.x)) : 0;
+      const maxY = state.nodes.length > 0 ? Math.max(...state.nodes.map((n) => n.position.y)) : 0;
+      const position = cursor
+        ? { x: cursor.x - ROOT_AT_CURSOR_OFFSET.x, y: cursor.y - ROOT_AT_CURSOR_OFFSET.y }
+        : { x: minX, y: maxY + 160 };
+
+      const id = generateNodeId();
+      const newNode: MindmapNode = {
+        id,
+        type: "mindmapNode",
+        position,
+        // textOnly hides all card chrome — a color is still assigned so a link
+        // edge drawn from this node has a sensible stroke color (same reasoning as
+        // addFileNode), even though the text itself renders in the default color.
+        data: { label: "", textOnly: true, color: resolveNewRootColor(state.nodes, state.edges) },
+      };
+
+      // Unlike addFileNode, this selects straight into edit mode — there's real
+      // text to type immediately, same as addRootNode/addLinkedNode.
+      set((s) => ({
+        nodes: [...s.nodes, newNode],
+        selectedNodeId: id,
+        selectedNodeIds: [id],
+        editingNodeId: id,
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+
+      return id;
+    },
+
+    addStickyNote: (at) => {
+      const state = get();
+      if (state.readOnly) return null;
+
+      commitHistory(state.nodes, state.edges);
+
+      // Same cursor-preferred placement as addRootNode/addFileNode/addTextNode.
+      const cursor = at ?? getLastCanvasPoint();
+      const minX = state.nodes.length > 0 ? Math.min(...state.nodes.map((n) => n.position.x)) : 0;
+      const maxY = state.nodes.length > 0 ? Math.max(...state.nodes.map((n) => n.position.y)) : 0;
+      const position = cursor
+        ? { x: cursor.x - ROOT_AT_CURSOR_OFFSET.x, y: cursor.y - ROOT_AT_CURSOR_OFFSET.y }
+        : { x: minX, y: maxY + 160 };
+
+      const id = generateNodeId();
+      const newNode: MindmapNode = {
+        id,
+        type: "mindmapNode",
+        position,
+        // sticky renders as a solid block of this color — unlike other node kinds,
+        // the color here isn't just an accent, it's the whole visible fill.
+        data: { label: "", sticky: true, color: resolveNewRootColor(state.nodes, state.edges) },
+      };
+
+      // Selects straight into edit mode, same as addTextNode.
+      set((s) => ({
+        nodes: [...s.nodes, newNode],
+        selectedNodeId: id,
+        selectedNodeIds: [id],
+        editingNodeId: id,
         dirty: true,
         revision: s.revision + 1,
       }));

@@ -8,7 +8,7 @@ import { useEditorStore } from "@/store/editor-store";
 // without much safety benefit. Any node, including a primary idea (root), can be
 // deleted — a mindmap can hold several independent roots, so removing one doesn't
 // leave the canvas without an entry point, and even an empty canvas is a valid state
-// (the toolbar's "Add primary idea" button is the recovery path).
+// (the toolbar's Insert menu is the recovery path).
 export function deleteNodeWithUndo(nodeId: string) {
   const store = useEditorStore.getState();
   store.deleteNodeAndSubtree(nodeId);

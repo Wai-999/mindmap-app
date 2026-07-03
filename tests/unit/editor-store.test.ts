@@ -363,18 +363,19 @@ describe("editor-store updateNodeSize", () => {
   });
 });
 
-describe("editor-store addImageNode (upload image onto canvas)", () => {
+describe("editor-store addFileNode (upload image or file onto canvas)", () => {
   beforeEach(() => {
     load([makeNode("root")], []);
     clearLastCanvasPoint();
   });
 
-  it("creates a parentless imageOnly node carrying the filename as its label", () => {
-    const id = useEditorStore.getState().addImageNode("photo.png", { x: 300, y: 200 })!;
+  it("creates a parentless imageOnly node carrying the filename as its label, when isImage is true", () => {
+    const id = useEditorStore.getState().addFileNode("photo.png", true, { x: 300, y: 200 })!;
     const state = useEditorStore.getState();
     const node = state.nodes.find((n) => n.id === id);
 
     expect(node?.data.imageOnly).toBe(true);
+    expect(node?.data.fileOnly).toBeUndefined();
     expect(node?.data.label).toBe("photo.png");
     // Parentless — it's a standalone element, so it reads as a forest root.
     expect(isRootNode(state.edges, id!)).toBe(true);
@@ -384,8 +385,17 @@ describe("editor-store addImageNode (upload image onto canvas)", () => {
     });
   });
 
-  it("selects the new image node but does NOT enter edit mode (no text to type)", () => {
-    const id = useEditorStore.getState().addImageNode("photo.png", { x: 0, y: 0 });
+  it("creates a parentless fileOnly node, when isImage is false", () => {
+    const id = useEditorStore.getState().addFileNode("report.pdf", false, { x: 0, y: 0 })!;
+    const node = useEditorStore.getState().nodes.find((n) => n.id === id);
+
+    expect(node?.data.fileOnly).toBe(true);
+    expect(node?.data.imageOnly).toBeUndefined();
+    expect(node?.data.label).toBe("report.pdf");
+  });
+
+  it("selects the new node but does NOT enter edit mode (no text to type)", () => {
+    const id = useEditorStore.getState().addFileNode("photo.png", true, { x: 0, y: 0 });
     const state = useEditorStore.getState();
     expect(state.selectedNodeId).toBe(id);
     expect(state.editingNodeId).toBeNull();
@@ -393,14 +403,100 @@ describe("editor-store addImageNode (upload image onto canvas)", () => {
 
   it("does nothing and returns null when read-only", () => {
     load([makeNode("root")], [], true);
-    const id = useEditorStore.getState().addImageNode("photo.png", { x: 0, y: 0 });
+    const id = useEditorStore.getState().addFileNode("photo.png", true, { x: 0, y: 0 });
     expect(id).toBeNull();
     expect(useEditorStore.getState().nodes).toHaveLength(1);
   });
 
   it("is one Undo away", () => {
     const before = useEditorStore.getState().nodes.length;
-    useEditorStore.getState().addImageNode("photo.png", { x: 0, y: 0 });
+    useEditorStore.getState().addFileNode("photo.png", true, { x: 0, y: 0 });
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes).toHaveLength(before);
+  });
+});
+
+describe("editor-store addTextNode (free-floating text)", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+    clearLastCanvasPoint();
+  });
+
+  it("creates a parentless textOnly node", () => {
+    const id = useEditorStore.getState().addTextNode({ x: 300, y: 200 })!;
+    const state = useEditorStore.getState();
+    const node = state.nodes.find((n) => n.id === id);
+
+    expect(node?.data.textOnly).toBe(true);
+    expect(node?.data.label).toBe("");
+    // Parentless — it's a standalone element, so it reads as a forest root.
+    expect(isRootNode(state.edges, id!)).toBe(true);
+    expect(node?.position).toEqual({
+      x: 300 - ROOT_AT_CURSOR_OFFSET.x,
+      y: 200 - ROOT_AT_CURSOR_OFFSET.y,
+    });
+  });
+
+  it("selects the new text node AND enters edit mode (unlike addFileNode)", () => {
+    const id = useEditorStore.getState().addTextNode({ x: 0, y: 0 });
+    const state = useEditorStore.getState();
+    expect(state.selectedNodeId).toBe(id);
+    expect(state.editingNodeId).toBe(id);
+  });
+
+  it("does nothing and returns null when read-only", () => {
+    load([makeNode("root")], [], true);
+    const id = useEditorStore.getState().addTextNode({ x: 0, y: 0 });
+    expect(id).toBeNull();
+    expect(useEditorStore.getState().nodes).toHaveLength(1);
+  });
+
+  it("is one Undo away", () => {
+    const before = useEditorStore.getState().nodes.length;
+    useEditorStore.getState().addTextNode({ x: 0, y: 0 });
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes).toHaveLength(before);
+  });
+});
+
+describe("editor-store addStickyNote (solid-color sticky note)", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+    clearLastCanvasPoint();
+  });
+
+  it("creates a parentless sticky node with a color assigned", () => {
+    const id = useEditorStore.getState().addStickyNote({ x: 300, y: 200 })!;
+    const state = useEditorStore.getState();
+    const node = state.nodes.find((n) => n.id === id);
+
+    expect(node?.data.sticky).toBe(true);
+    expect(node?.data.label).toBe("");
+    expect(node?.data.color).toBeTruthy();
+    expect(isRootNode(state.edges, id!)).toBe(true);
+    expect(node?.position).toEqual({
+      x: 300 - ROOT_AT_CURSOR_OFFSET.x,
+      y: 200 - ROOT_AT_CURSOR_OFFSET.y,
+    });
+  });
+
+  it("selects the new sticky note AND enters edit mode", () => {
+    const id = useEditorStore.getState().addStickyNote({ x: 0, y: 0 });
+    const state = useEditorStore.getState();
+    expect(state.selectedNodeId).toBe(id);
+    expect(state.editingNodeId).toBe(id);
+  });
+
+  it("does nothing and returns null when read-only", () => {
+    load([makeNode("root")], [], true);
+    const id = useEditorStore.getState().addStickyNote({ x: 0, y: 0 });
+    expect(id).toBeNull();
+    expect(useEditorStore.getState().nodes).toHaveLength(1);
+  });
+
+  it("is one Undo away", () => {
+    const before = useEditorStore.getState().nodes.length;
+    useEditorStore.getState().addStickyNote({ x: 0, y: 0 });
     useEditorStore.getState().undo();
     expect(useEditorStore.getState().nodes).toHaveLength(before);
   });
@@ -752,5 +848,63 @@ describe("editor-store addChildNode smart auto-placement (left/right)", () => {
     const id = useEditorStore.getState().addChildNode("root", { x: -300, y: 50 })!;
     const node = useEditorStore.getState().nodes.find((n) => n.id === id);
     expect(node?.position).toEqual({ x: -300, y: 50 });
+  });
+});
+
+describe("editor-store addDirectionalNode (directional arrow buttons)", () => {
+  beforeEach(() => {
+    load([makeNode("root")], []);
+  });
+
+  it("left/right force a hierarchy child onto that explicit side, bypassing auto-alternation", () => {
+    // Root's FIRST child would normally auto-pick "right" — force left instead.
+    const leftId = useEditorStore.getState().addDirectionalNode("root", "left")!;
+    const leftNode = useEditorStore.getState().nodes.find((n) => n.id === leftId);
+    expect(leftNode?.position.x).toBeLessThan(0);
+    const leftEdge = useEditorStore.getState().edges.find((e) => e.target === leftId);
+    expect(leftEdge?.source).toBe("root");
+    expect(leftEdge?.data?.kind).toBeUndefined(); // hierarchy, not a link
+
+    const rightId = useEditorStore.getState().addDirectionalNode("root", "right")!;
+    const rightNode = useEditorStore.getState().nodes.find((n) => n.id === rightId);
+    expect(rightNode?.position.x).toBeGreaterThan(0);
+  });
+
+  it("up/down create a link connection, not a hierarchy child", () => {
+    const upId = useEditorStore.getState().addDirectionalNode("root", "up")!;
+    const upNode = useEditorStore.getState().nodes.find((n) => n.id === upId);
+    expect(upNode?.position.y).toBeLessThan(0);
+    const upEdge = useEditorStore.getState().edges.find((e) => e.target === upId);
+    expect(upEdge?.data?.kind).toBe("link");
+
+    const downId = useEditorStore.getState().addDirectionalNode("root", "down")!;
+    const downNode = useEditorStore.getState().nodes.find((n) => n.id === downId);
+    expect(downNode?.position.y).toBeGreaterThan(0);
+  });
+
+  it("stacks multiple up-clicks without overlapping", () => {
+    const id1 = useEditorStore.getState().addDirectionalNode("root", "up")!;
+    const id2 = useEditorStore.getState().addDirectionalNode("root", "up")!;
+    const n1 = useEditorStore.getState().nodes.find((n) => n.id === id1)!;
+    const n2 = useEditorStore.getState().nodes.find((n) => n.id === id2)!;
+    expect(n1.position.y).toBe(n2.position.y); // same vertical hop
+    expect(n1.position.x).not.toBe(n2.position.x); // offset so they don't overlap
+  });
+
+  it("returns null and does nothing when read-only", () => {
+    load([makeNode("root")], [], true);
+    expect(useEditorStore.getState().addDirectionalNode("root", "right")).toBeNull();
+    expect(useEditorStore.getState().addDirectionalNode("root", "up")).toBeNull();
+  });
+
+  it("returns null for a node that doesn't exist", () => {
+    expect(useEditorStore.getState().addDirectionalNode("nope", "right")).toBeNull();
+  });
+
+  it("each direction is one Undo away", () => {
+    const before = useEditorStore.getState().nodes.length;
+    useEditorStore.getState().addDirectionalNode("root", "up");
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes).toHaveLength(before);
   });
 });

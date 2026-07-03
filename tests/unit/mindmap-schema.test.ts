@@ -60,6 +60,61 @@ describe("nodeDataSchema (size / imageOnly fields)", () => {
   });
 });
 
+describe("nodeDataSchema (textOnly field)", () => {
+  it("accepts a textOnly node", () => {
+    const result = nodeDataSchema.safeParse({ label: "Just a note", textOnly: true });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a non-boolean textOnly", () => {
+    expect(nodeDataSchema.safeParse({ label: "Idea", textOnly: "yes" }).success).toBe(false);
+  });
+});
+
+describe("nodeDataSchema (sticky field)", () => {
+  it("accepts a sticky node", () => {
+    const result = nodeDataSchema.safeParse({ label: "Remember this", sticky: true, color: "#f59e0b" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a non-boolean sticky", () => {
+    expect(nodeDataSchema.safeParse({ label: "Idea", sticky: "yes" }).success).toBe(false);
+  });
+});
+
+describe("nodeDataSchema (fileOnly field)", () => {
+  it("accepts a fileOnly node (label kept as the filename)", () => {
+    const result = nodeDataSchema.safeParse({ label: "report.pdf", fileOnly: true });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a non-boolean fileOnly", () => {
+    expect(nodeDataSchema.safeParse({ label: "Idea", fileOnly: "yes" }).success).toBe(false);
+  });
+});
+
+describe("nodeDataSchema (expanded shape library)", () => {
+  it("accepts every shape, including the newly added polygon ones", () => {
+    const shapes = [
+      "rounded",
+      "rectangle",
+      "pill",
+      "diamond",
+      "triangle",
+      "pentagon",
+      "parallelogram",
+      "chevron",
+    ] as const;
+    for (const shape of shapes) {
+      expect(nodeDataSchema.safeParse({ label: "Idea", shape }).success).toBe(true);
+    }
+  });
+
+  it("rejects an unknown shape", () => {
+    expect(nodeDataSchema.safeParse({ label: "Idea", shape: "hexagon" }).success).toBe(false);
+  });
+});
+
 describe("mindmapNodeSchema (explicit width/height from resizing)", () => {
   const base = {
     id: "n1",

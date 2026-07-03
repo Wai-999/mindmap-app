@@ -6,11 +6,20 @@ export const taskSchema = z.object({
   priority: z.enum(["low", "medium", "high"]).optional(),
 });
 
-// Absent/"rounded" is the original mindmap look (rounded rectangle). The other three
-// cover standard flowchart notation — rectangle (process), pill (start/end
-// terminator), diamond (decision) — without forcing that vocabulary on anyone who
-// just wants plain mind-mapping.
-export const nodeShapeSchema = z.enum(["rounded", "rectangle", "pill", "diamond"]);
+// Absent/"rounded" is the original mindmap look (rounded rectangle). rectangle/pill/
+// diamond cover standard flowchart notation (process/terminator/decision). The rest —
+// triangle, pentagon, parallelogram, chevron — are general-purpose shapes for visual
+// grouping/annotation (a la Freeform's shape grid) rather than flowchart semantics.
+export const nodeShapeSchema = z.enum([
+  "rounded",
+  "rectangle",
+  "pill",
+  "diamond",
+  "triangle",
+  "pentagon",
+  "parallelogram",
+  "chevron",
+]);
 
 // Absent/"medium" is the original node scale. "small"/"large" scale the card's text
 // and width together so a mindmap can visually rank ideas (a big central concept vs.
@@ -25,10 +34,26 @@ export const nodeDataSchema = z.object({
   shape: nodeShapeSchema.optional(),
   size: nodeSizeSchema.optional(),
   // Renders the node as just its uploaded image (no label row, color dot, or card
-  // chrome) — set when a node is created via "Add image". It's still an ordinary
-  // node otherwise (draggable, connectable, deletable), and keeps its label (the
-  // original filename) for the outline view, exports, and accessibility.
+  // chrome) — set when a node is created via "Add file" with an image upload
+  // (see fileOnly below for a non-image upload through that same entry point).
+  // It's still an ordinary node otherwise (draggable, connectable, deletable), and
+  // keeps its label (the original filename) for the outline view, exports, and
+  // accessibility.
   imageOnly: z.boolean().optional(),
+  // Renders the node as just its bare label — no card background/border/shadow or
+  // color dot — for dropping a free-floating annotation onto the canvas. Set when
+  // created via "Add text"; otherwise an ordinary node (draggable, connectable,
+  // resizable, deletable) like any other.
+  textOnly: z.boolean().optional(),
+  // Renders the node as a solid-color block (its `color`, full-bleed, no card
+  // border/shadow) with just its label on top — a sticky note. Set when created
+  // via "Add sticky note"; otherwise an ordinary node like any other.
+  sticky: z.boolean().optional(),
+  // Renders the node as a compact file chip (icon + filename + size, no image
+  // preview) — set when a node is created via "Add file" for a non-image upload.
+  // The uploaded file itself lives in the usual attachments list; this only flags
+  // how the node displays on the canvas.
+  fileOnly: z.boolean().optional(),
   // Markdown-capable free text, rendered via react-markdown in the inspector panel
   // and presentation mode. Capped for the same DoS-hardening reason array sizes are.
   note: z.string().max(10_000).optional(),

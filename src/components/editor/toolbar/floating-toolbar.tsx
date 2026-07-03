@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { toast } from "sonner";
-import { Plus, GitBranch, Trash2, Undo2, Redo2, CirclePlus, Focus } from "lucide-react";
+import { Plus, GitBranch, Trash2, Undo2, Redo2, Focus } from "lucide-react";
 
 import { useEditorStore } from "@/store/editor-store";
 import { useHistoryStore } from "@/store/history-store";
@@ -11,7 +11,7 @@ import { NodeColorPicker } from "@/components/editor/nodes/node-color-picker";
 import { NodeShapePicker } from "@/components/editor/nodes/node-shape-picker";
 import { NodeSizePicker } from "@/components/editor/nodes/node-size-picker";
 import { NodeIconPicker } from "@/components/editor/nodes/node-icon-picker";
-import { AddImageButton } from "@/components/editor/toolbar/add-image-button";
+import { InsertMenu } from "@/components/editor/toolbar/insert-menu";
 import { LayoutMenu } from "@/components/editor/toolbar/layout-menu";
 import { ExportMenu } from "@/components/editor/export/export-menu";
 import { ImportDialog } from "@/components/editor/export/import-dialog";
@@ -28,7 +28,6 @@ export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
   const selectionCount = useEditorStore((s) => s.selectedNodeIds.length);
   const addChildNode = useEditorStore((s) => s.addChildNode);
   const addSiblingNode = useEditorStore((s) => s.addSiblingNode);
-  const addRootNode = useEditorStore((s) => s.addRootNode);
   const setFocusedNode = useEditorStore((s) => s.setFocusedNode);
   const deleteSelectedNodes = useEditorStore((s) => s.deleteSelectedNodes);
   const undo = useEditorStore((s) => s.undo);
@@ -64,10 +63,7 @@ export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
 
       <Divider />
 
-      <ToolbarButton label="Add primary idea" onClick={() => addRootNode()}>
-        <CirclePlus className="size-4" />
-      </ToolbarButton>
-      <AddImageButton endpoint={endpoint} />
+      <InsertMenu endpoint={endpoint} />
 
       {multi && selectedNodeId && (
         <>
