@@ -12,6 +12,7 @@ import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
 import { NodeInspectorPanel } from "@/components/editor/inspector/node-inspector-panel";
 import { SharedViewBanner } from "@/components/shared-view/shared-view-banner";
+import { CollabStatusBanner } from "@/components/editor/collab/collab-status-banner";
 import { LiveblocksRoomProvider } from "@/components/editor/collab/liveblocks-room-provider";
 import { mindmapRoomId } from "@/lib/liveblocks/room-id";
 import type { MindmapContent } from "@/types/mindmap";
@@ -82,6 +83,7 @@ export function SharedMindmapViewer({
       <ReactFlowProvider>
         <div className="relative flex-1">
           <MindmapCanvas />
+          <CollabStatusBanner />
           {isEditable && <FloatingToolbar endpoint={endpoint} />}
           <NodeInspectorPanel endpoint={endpoint} />
         </div>

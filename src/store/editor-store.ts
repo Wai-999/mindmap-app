@@ -162,6 +162,13 @@ interface EditorState {
   // Wholesale swap from a remote collaborator's edit (via the Liveblocks bridge).
   // Deliberately does NOT commit history, unlike replaceContent — a local Cmd+Z should
   // only ever undo this browser's own actions, never a peer's edit that just arrived.
+  // Enforcing that isn't just "don't commit": every entry already sitting in the undo
+  // stack predates this remote content, so popping one back onto the canvas would
+  // silently erase it. There's no per-operation attribution to separate "the peer's
+  // change" from "my own prior changes" within a single snapshot, so the stack is
+  // cleared outright rather than leaving stale entries that look undoable but aren't
+  // actually safe to restore — the very next local edit commits a fresh baseline that
+  // already includes this remote content, and undo works normally again from there.
   applyRemoteContent: (nodes: MindmapNode[], edges: MindmapEdge[]) => void;
 
   undo: () => void;
@@ -972,6 +979,10 @@ export const useEditorStore = create<EditorState>()(
     applyRemoteContent: (nodes, edges) => {
       const state = get();
       if (state.readOnly) return;
+
+      // See the interface comment above — every existing undo/redo entry predates
+      // this content and isn't safe to restore over it anymore.
+      useHistoryStore.getState().reset();
 
       const stillExists = (id: string | null) => id !== null && nodes.some((n) => n.id === id);
       set((s) => {

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "@/store/editor-store";
+import { computeViewportCenter } from "@/lib/mindmap/viewport-center";
 import type { AttachmentRecord } from "@/types/mindmap";
 
 interface InsertMenuProps {
@@ -41,15 +42,8 @@ export function InsertMenu({ endpoint }: InsertMenuProps) {
   // previous default) — reads as "insert here, in front of me" regardless of
   // where the mouse drifted before opening this menu. Computed fresh on each call
   // (not memoized) since pan/zoom can change while the menu or a file picker is open.
-  // Returns undefined (falling back to the store action's own default placement)
-  // if the pane hasn't been measured yet or zoom is somehow non-finite — a stale
-  // or zero measurement here would otherwise place the node off-screen instead of
-  // just landing somewhere less exact.
   function viewportCenter(): { x: number; y: number } | undefined {
-    if (!paneWidth || !paneHeight) return undefined;
-    const { x, y, zoom } = getViewport();
-    if (!zoom || !Number.isFinite(zoom)) return undefined;
-    return { x: (paneWidth / 2 - x) / zoom, y: (paneHeight / 2 - y) / zoom };
+    return computeViewportCenter({ width: paneWidth, height: paneHeight }, getViewport());
   }
 
   async function handleFile(file: File) {

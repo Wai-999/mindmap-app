@@ -14,10 +14,6 @@ export const NODE_COLORS = [
 export const DEFAULT_NODE_WIDTH = 180;
 export const DEFAULT_NODE_HEIGHT = 44;
 
-export function emptyMindmapContent(): MindmapContent {
-  return { nodes: [], edges: [] };
-}
-
 export function createSeedContent(rootLabel = "Main Idea"): MindmapContent {
   return {
     nodes: [

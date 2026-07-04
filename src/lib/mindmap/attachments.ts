@@ -5,6 +5,28 @@ import { storage } from "@/lib/storage";
 
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
 
+// MIME types considered safe to render inline in a browser tab. "Add file" still
+// accepts any file type on upload (an intentional feature, not a bug) — this
+// allowlist only controls how a download route serves a file back, which is the
+// actual attack surface: an uploaded .html/.svg opened via direct navigation to
+// its attachment URL would otherwise execute as a same-origin page (stored XSS).
+// Anything not on this list downloads instead of rendering (see the download
+// routes), which doesn't affect using an uploaded image as a node's <img> src —
+// browsers don't apply Content-Disposition to subresource loads, only to
+// navigations.
+const INLINE_SAFE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "application/pdf",
+]);
+
+export function isInlineSafeMimeType(mimeType: string): boolean {
+  return INLINE_SAFE_MIME_TYPES.has(mimeType);
+}
+
 export interface UploadAttachmentInput {
   mindmapId: string;
   nodeId: string;

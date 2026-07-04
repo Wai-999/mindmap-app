@@ -78,3 +78,16 @@ export const TEMPLATES: MindmapTemplate[] = [
 export function getTemplate(id: string): MindmapTemplate | undefined {
   return TEMPLATES.find((t) => t.id === id);
 }
+
+// Seeded once for every brand-new registration (see the register route) so a first-time
+// user lands on something they can explore instead of a blank canvas. Deliberately not
+// listed in TEMPLATES — it's onboarding content, not a pickable template.
+export function buildWelcomeContent(): MindmapContent {
+  return rootWithChildren("Welcome to your first mind map", [
+    "Tab adds a child idea",
+    "Enter adds a sibling idea",
+    "Insert menu adds images, files, and shapes",
+    "Share button invites others to collaborate",
+    "Keyboard icon in the toolbar lists every shortcut",
+  ]);
+}

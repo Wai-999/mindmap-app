@@ -6,6 +6,16 @@ import { toast } from "sonner";
 import { useEditorStore } from "@/store/editor-store";
 import { forceSave } from "@/store/autosave";
 import { deleteNodeWithUndo, removeLinkEdgeWithUndo } from "@/lib/mindmap/delete-with-undo";
+import { getRootNodes, getHiddenIds, filterVisible } from "@/lib/mindmap/tree-utils";
+import { getFocusedSubtree } from "@/lib/mindmap/focus";
+import { findNodeInDirection, type NavDirection } from "@/lib/mindmap/spatial-nav";
+
+const ARROW_DIRECTIONS: Record<string, NavDirection> = {
+  ArrowUp: "up",
+  ArrowDown: "down",
+  ArrowLeft: "left",
+  ArrowRight: "right",
+};
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -72,8 +82,47 @@ export function useKeyboardShortcuts(endpoint: string) {
         return;
       }
 
+      // Arrow-key node selection — the one thing that makes the canvas usable
+      // without a mouse at all: every other shortcut below needs a selection to
+      // act on, and until now the only way to get one was to click a node.
+      // Direction is resolved geometrically (see spatial-nav.ts), not from the
+      // tree structure, since a hierarchy edge can render to either side of its
+      // parent and the canvas also supports top-down/radial layouts.
+      if (e.key in ARROW_DIRECTIONS) {
+        e.preventDefault();
+        const direction = ARROW_DIRECTIONS[e.key];
+
+        const hidden = getHiddenIds(store.nodes, store.edges);
+        const { nodes: visible } = filterVisible(store.nodes, store.edges, hidden);
+        const focusedSet = getFocusedSubtree(store.edges, store.focusedNodeId);
+        const navigable = focusedSet ? visible.filter((n) => focusedSet.has(n.id)) : visible;
+
+        if (!store.selectedNodeId) {
+          // Cold start — nothing selected yet, so there's no origin point to
+          // navigate from. A root reads as the natural place to begin.
+          const first = getRootNodes(navigable, store.edges)[0] ?? navigable[0];
+          if (first) store.selectNode(first.id);
+          return;
+        }
+
+        const nextId = findNodeInDirection(navigable, store.selectedNodeId, direction);
+        if (nextId) store.selectNode(nextId);
+        return;
+      }
+
       const selectedId = store.selectedNodeId;
       if (!selectedId) return;
+
+      // F2 (the conventional rename key — Windows Explorer, and most desktop
+      // mind-mapping tools) opens the selected node for editing. Deliberately a
+      // separate key from Enter, which stays "add a sibling" — that's the app's
+      // own marketed core loop ("Tab to branch, Enter for a new idea"), not
+      // something an editing shortcut should quietly repurpose.
+      if (e.key === "F2") {
+        e.preventDefault();
+        store.setEditingNode(selectedId);
+        return;
+      }
 
       if (e.key === "Tab") {
         e.preventDefault();

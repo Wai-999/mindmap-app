@@ -141,6 +141,27 @@ describe("editor-store applyRemoteContent (Liveblocks bridge)", () => {
     useEditorStore.getState().applyRemoteContent([makeNode("root"), makeNode("a")], []);
     expect(useEditorStore.getState().nodes).toHaveLength(1);
   });
+
+  // Regression test for a real bug: every entry already in the undo stack predates
+  // a remote merge, so popping one back onto the canvas after the merge silently
+  // erased the collaborator's content. Clearing the stack on remote merge means
+  // there's nothing stale left to (unsafely) restore.
+  it("clears an existing undo/redo stack, so a later Undo can't erase a peer's merged edit", () => {
+    // A real local edit first, so there's something in the undo stack to clear.
+    useEditorStore.getState().addChildNode("root");
+    expect(useHistoryStore.getState().past.length).toBeGreaterThan(0);
+
+    const mergedNodes = [makeNode("root"), makeNode("a"), makeNode("fromPeer")];
+    useEditorStore.getState().applyRemoteContent(mergedNodes, []);
+
+    expect(useHistoryStore.getState().past).toEqual([]);
+    expect(useHistoryStore.getState().future).toEqual([]);
+
+    // Undo is now a no-op (nothing safe to restore) rather than reverting past the
+    // point the peer's edit merged in and destroying "fromPeer".
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().nodes.map((n) => n.id)).toContain("fromPeer");
+  });
 });
 
 describe("editor-store addRootNode placement (new idea at the cursor)", () => {

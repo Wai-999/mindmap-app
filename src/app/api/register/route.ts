@@ -5,6 +5,8 @@ import { hashPassword } from "@/lib/password";
 import { registerSchema } from "@/lib/validations/auth";
 import { jsonOk, jsonError, jsonValidationError } from "@/lib/api-response";
 import { rateLimit } from "@/lib/rate-limit";
+import { encodeContent } from "@/lib/mindmap/content-codec";
+import { buildWelcomeContent } from "@/lib/mindmap/templates";
 
 export async function POST(request: NextRequest) {
   const ip = request.headers.get("x-forwarded-for") ?? "unknown";
@@ -29,6 +31,14 @@ export async function POST(request: NextRequest) {
   const user = await prisma.user.create({
     data: { name, email, password: passwordHash },
     select: { id: true, email: true },
+  });
+
+  await prisma.mindmap.create({
+    data: {
+      title: "Welcome to Mindmap",
+      content: encodeContent(buildWelcomeContent()),
+      ownerId: user.id,
+    },
   });
 
   return jsonOk(user, 201);

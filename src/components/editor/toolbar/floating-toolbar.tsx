@@ -15,6 +15,7 @@ import { InsertMenu } from "@/components/editor/toolbar/insert-menu";
 import { LayoutMenu } from "@/components/editor/toolbar/layout-menu";
 import { ExportMenu } from "@/components/editor/export/export-menu";
 import { ImportDialog } from "@/components/editor/export/import-dialog";
+import { KeyboardShortcutsDialog } from "@/components/editor/toolbar/keyboard-shortcuts-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +61,7 @@ export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
       <LayoutMenu />
       <ExportMenu endpoint={endpoint} />
       <ImportDialog />
+      <KeyboardShortcutsDialog />
 
       <Divider />
 

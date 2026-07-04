@@ -12,6 +12,7 @@ import { EditorHeader } from "@/components/editor/editor-header";
 import { MindmapCanvas } from "@/components/editor/mindmap-canvas";
 import { FloatingToolbar } from "@/components/editor/toolbar/floating-toolbar";
 import { FocusModeBanner } from "@/components/editor/focus-mode-banner";
+import { CollabStatusBanner } from "@/components/editor/collab/collab-status-banner";
 import { NodeInspectorPanel } from "@/components/editor/inspector/node-inspector-panel";
 import { OutlineView } from "@/components/editor/outline/outline-view";
 import { LiveblocksRoomProvider } from "@/components/editor/collab/liveblocks-room-provider";
@@ -85,6 +86,7 @@ export function MindmapEditorShell({
             <>
               <MindmapCanvas />
               <FocusModeBanner />
+              <CollabStatusBanner />
               <FloatingToolbar endpoint={`/api/mindmaps/${mindmap.id}`} />
               <NodeInspectorPanel endpoint={`/api/mindmaps/${mindmap.id}`} />
             </>

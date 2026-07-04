@@ -21,6 +21,7 @@ import { useEditorStore } from "@/store/editor-store";
 import { getChildIds, getDescendantIds } from "@/lib/mindmap/tree-utils";
 import { useRemoteSelectors } from "@/components/editor/collab/use-remote-selectors";
 import { consumeEditClickPoint } from "@/lib/mindmap/canvas-cursor";
+import { dynamicFontSize, readableTextColor } from "@/lib/mindmap/node-style";
 import { cn } from "@/lib/utils";
 
 // A freshly-focused contentEditable places its caret at the browser's own default
@@ -139,28 +140,6 @@ const SHAPE_ASPECT: Record<string, number> = {
   chevron: 0.5,
 };
 
-// Perceived-brightness check (YIQ) so a sticky note's text stays legible against
-// whichever palette color it's using as its full background fill — the palette
-// (see NODE_COLORS) spans everything from amber to indigo, too wide a range to
-// assume one text color always reads well.
-function readableTextColor(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 150 ? "#1f2937" : "#ffffff";
-}
-
-// Text size that actually tracks the node's own rendered height, rather than
-// staying frozen at whatever the small/medium/large preset picked when the node
-// was created — otherwise dragging a node much bigger via NodeResizer leaves its
-// label looking tiny and lost inside the now-much-larger box. Linear fit anchored
-// to the preset sizes' own typical heights (small ~36px → 12px text, large ~76px
-// → 18px text), then keeps extrapolating past them as the box grows or shrinks.
-function dynamicFontSize(height: number): number {
-  return Math.min(96, Math.max(11, height * 0.2 + 4));
-}
-
 function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // Selection is driven entirely by our own store (selectedNodeId), not React Flow's
   // internal node.selected flag — store actions like addChildNode change selection
@@ -201,11 +180,13 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     collapsed ? getDescendantIds(s.edges, id).length : 0,
   );
   const isEditing = useEditorStore((s) => s.editingNodeId === id);
-  // Colors of remote collaborators (if any) who currently have this node selected —
-  // [] in solo mode. Only the first is rendered as a ring; simultaneous multi-user
-  // selection of the same node is rare enough that stacking several rings isn't
-  // worth the extra visual complexity.
-  const remoteSelectorColors = useRemoteSelectors(id);
+  // Remote collaborators (if any) who currently have this node selected — [] in
+  // solo mode. Only the first is rendered as a ring (with their name in its title,
+  // so it isn't just an anonymous color once more than one collaborator is
+  // active); simultaneous multi-user selection of the same node is rare enough
+  // that stacking several rings isn't worth the extra visual complexity.
+  const remoteSelectors = useRemoteSelectors(id);
+  const remoteSelectorTitle = remoteSelectors[0] ? `Selected by ${remoteSelectors[0].name}` : undefined;
   // True while the user is dragging a connection that started on a DIFFERENT node —
   // used to turn this node's entire body into a drop target for the duration, so a
   // link can end anywhere on the node, not just on its border strips.
@@ -361,9 +342,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     return (
       <div
         className={cn("group relative", hasExplicitSize && "size-full")}
+        title={remoteSelectorTitle}
         style={{
-          boxShadow: remoteSelectorColors[0]
-            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+          boxShadow: remoteSelectors[0]
+            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectors[0].color}`
             : selected
               ? `0 0 0 2px ${color ?? "var(--primary)"}`
               : undefined,
@@ -440,10 +422,11 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     return (
       <div
         className="group relative flex items-center gap-2 rounded-lg border-2 bg-card px-3 py-2 shadow-sm transition-shadow hover:shadow-md"
+        title={remoteSelectorTitle}
         style={{
           borderColor: selected ? (color ?? "var(--primary)") : "transparent",
-          boxShadow: remoteSelectorColors[0]
-            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+          boxShadow: remoteSelectors[0]
+            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectors[0].color}`
             : undefined,
         }}
       >
@@ -473,9 +456,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     return (
       <div
         className={cn("group relative", hasExplicitSize && "size-full")}
+        title={remoteSelectorTitle}
         style={{
-          boxShadow: remoteSelectorColors[0]
-            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+          boxShadow: remoteSelectors[0]
+            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectors[0].color}`
             : undefined,
           borderRadius: 8,
           fontSize,
@@ -545,11 +529,12 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     return (
       <div
         className={cn("group relative rounded-lg p-4", hasExplicitSize && "size-full")}
+        title={remoteSelectorTitle}
         style={{
           backgroundColor: bg,
           color: textColor,
-          boxShadow: remoteSelectorColors[0]
-            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+          boxShadow: remoteSelectors[0]
+            ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectors[0].color}`
             : selected
               ? `0 0 0 2px var(--card), 0 0 0 4px ${bg}`
               : undefined,
@@ -658,6 +643,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         // shape's actual silhouette).
         !isPolygon && (selected ? "shadow-md" : "shadow-sm hover:shadow-md"),
       )}
+      title={remoteSelectorTitle}
       style={{
         // A polygon's outline is drawn by its own SVG below instead — this div stays
         // borderless so no rectangular edge shows through its points.
@@ -665,8 +651,8 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         // Ring sits outside the node's own border (a card-colored gap, then the
         // collaborator's color) so local selection and remote selection never visually
         // collide, even when both are true at once.
-        boxShadow: remoteSelectorColors[0]
-          ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
+        boxShadow: remoteSelectors[0]
+          ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectors[0].color}`
           : undefined,
         fontSize: computedFontSize,
         // Always the shape's real pixel size (fixed default, or whatever it's been

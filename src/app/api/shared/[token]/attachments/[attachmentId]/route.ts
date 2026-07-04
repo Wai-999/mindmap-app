@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { storage } from "@/lib/storage";
 import { resolveShareAccess } from "@/lib/permissions";
 import { jsonOk, jsonError } from "@/lib/api-response";
-import { deleteAttachment } from "@/lib/mindmap/attachments";
+import { deleteAttachment, isInlineSafeMimeType } from "@/lib/mindmap/attachments";
 
 interface RouteParams {
   params: Promise<{ token: string; attachmentId: string }>;
@@ -29,10 +29,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   const buffer = await storage.read(attachment.id).catch(() => null);
   if (!buffer) return jsonError("File not found", 404);
 
+  const inlineSafe = isInlineSafeMimeType(attachment.mimeType);
   return new Response(new Uint8Array(buffer), {
     headers: {
-      "Content-Type": attachment.mimeType,
-      "Content-Disposition": `inline; filename="${encodeURIComponent(attachment.name)}"`,
+      "Content-Type": inlineSafe ? attachment.mimeType : "application/octet-stream",
+      "Content-Disposition": `${inlineSafe ? "inline" : "attachment"}; filename="${encodeURIComponent(attachment.name)}"`,
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

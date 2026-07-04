@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getOwnedMindmap } from "@/lib/permissions";
 import { jsonOk, jsonError } from "@/lib/api-response";
-import { decodeContent } from "@/lib/mindmap/content-codec";
+import { decodeContent, MindmapContentDecodeError } from "@/lib/mindmap/content-codec";
 
 interface RouteParams {
   params: Promise<{ id: string; versionId: string }>;
@@ -25,10 +25,17 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   const version = await prisma.mindmapVersion.findUnique({ where: { id: versionId } });
   if (!version || version.mindmapId !== id) return jsonError("Version not found", 404);
 
-  return jsonOk({
-    id: version.id,
-    title: version.title,
-    content: decodeContent(version.content),
-    createdAt: version.createdAt.toISOString(),
-  });
+  try {
+    return jsonOk({
+      id: version.id,
+      title: version.title,
+      content: decodeContent(version.content),
+      createdAt: version.createdAt.toISOString(),
+    });
+  } catch (err) {
+    if (err instanceof MindmapContentDecodeError) {
+      return jsonError("This version's saved content could not be read", 500);
+    }
+    throw err;
+  }
 }

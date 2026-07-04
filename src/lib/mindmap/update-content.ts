@@ -57,7 +57,18 @@ export async function applyMindmapUpdate(
   // minor storage-cleanliness issue, not a correctness one, so it isn't allowed to
   // fail the save itself.
   if (input.content !== undefined) {
-    const oldNodeIds = new Set(decodeContent(current.content).nodes.map((n) => n.id));
+    // Best-effort: if the previously-stored content can't be decoded, there's no
+    // diff to compute — skip cleanup rather than let it block the save itself
+    // (the save above already succeeded and doesn't depend on reading old content).
+    const oldNodeIds = new Set(
+      (() => {
+        try {
+          return decodeContent(current.content).nodes.map((n) => n.id);
+        } catch {
+          return [];
+        }
+      })(),
+    );
     const newNodeIds = new Set(input.content.nodes.map((n) => n.id));
     const removedNodeIds = [...oldNodeIds].filter((id) => !newNodeIds.has(id));
 

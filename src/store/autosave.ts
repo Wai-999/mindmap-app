@@ -3,6 +3,69 @@ import { captureThumbnail } from "@/lib/mindmap/capture-thumbnail";
 import { roomActiveRef, isElectedSaverRef } from "@/lib/liveblocks/collab-state";
 import type { MindmapContent } from "@/types/mindmap";
 
+// A save that fails outright (network error, or a non-2xx/409 response) is queued
+// here so it isn't lost if the tab closes before a retry succeeds — recovered by
+// initAutosave the next time this exact mindmap is opened (see recoverPendingSave
+// below). Keyed by endpoint since the owner route and a share-link route are
+// different mindmaps as far as this cache is concerned.
+interface PendingSave {
+  content: MindmapContent;
+  title: string;
+  clientUpdatedAt: string | null;
+}
+
+function pendingSaveKey(endpoint: string): string {
+  return `mindmap:pending-save:${endpoint}`;
+}
+
+function readPendingSave(endpoint: string): PendingSave | null {
+  try {
+    const raw = localStorage.getItem(pendingSaveKey(endpoint));
+    return raw ? (JSON.parse(raw) as PendingSave) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingSave(endpoint: string, save: PendingSave) {
+  try {
+    localStorage.setItem(pendingSaveKey(endpoint), JSON.stringify(save));
+  } catch {
+    // Quota errors or private-browsing storage restrictions — losing this safety
+    // net silently is no worse than not having built it in the first place.
+  }
+}
+
+function clearPendingSave(endpoint: string) {
+  try {
+    localStorage.removeItem(pendingSaveKey(endpoint));
+  } catch {
+    // see writePendingSave
+  }
+}
+
+// Recovers a save that never made it to the server into the just-loaded editor
+// state, but ONLY if nothing else has touched this mindmap since — i.e. the
+// queued save's clientUpdatedAt still matches what the server just reported as
+// current. If it doesn't match, some other save (a collaborator's, or this same
+// browser's own later successful retry) has already superseded it, and forcing
+// the stale queued content back in would itself be a data-loss bug of exactly
+// the kind this is meant to prevent — so it's discarded instead.
+function recoverPendingSave(endpoint: string) {
+  const pending = readPendingSave(endpoint);
+  if (!pending) return;
+
+  const state = useEditorStore.getState();
+  if (pending.clientUpdatedAt !== state.lastSyncedUpdatedAt) {
+    clearPendingSave(endpoint);
+    return;
+  }
+
+  state.applyRemoteContent(pending.content.nodes, pending.content.edges);
+  if (pending.title !== state.title) state.setTitle(pending.title);
+  clearPendingSave(endpoint);
+}
+
 const DEBOUNCE_MS = 800;
 const FALLBACK_INTERVAL_MS = 10_000;
 // Rasterizing the whole canvas (html-to-image cloning every node's DOM) is the one
@@ -98,6 +161,10 @@ async function flush(endpoint: string, includeThumbnail = true, isRetry = false)
       }
 
       useEditorStore.getState().markSaveError();
+      // A 409 means the server has already moved past clientUpdatedAt — any queued
+      // save from an earlier failed attempt is now provably stale (see
+      // recoverPendingSave's own staleness check), so there's nothing left to keep.
+      clearPendingSave(endpoint);
       if (body) {
         window.dispatchEvent(new CustomEvent<ConflictDetail>("mindmap:conflict", { detail: body }));
       }
@@ -106,18 +173,70 @@ async function flush(endpoint: string, includeThumbnail = true, isRetry = false)
 
     if (!res.ok) {
       useEditorStore.getState().markSaveError();
+      writePendingSave(endpoint, { content, title: state.title, clientUpdatedAt: state.lastSyncedUpdatedAt });
       return;
     }
 
     const body = (await res.json()) as { updatedAt: string };
     useEditorStore.getState().markSaved(body.updatedAt, revisionAtFlushStart);
+    clearPendingSave(endpoint);
   } catch {
     useEditorStore.getState().markSaveError();
+    writePendingSave(endpoint, { content, title: state.title, clientUpdatedAt: state.lastSyncedUpdatedAt });
+  }
+}
+
+// Used only for the beforeunload/visibilitychange path below, where the priority
+// is getting *something* durable out before the page disappears rather than
+// running the full flush() (which awaits a thumbnail capture and a JSON response
+// neither of which matter once the tab is gone). navigator.sendBeacon is built
+// for exactly this — the browser guarantees best-effort delivery even after the
+// page has already unloaded, unlike a plain fetch (even with keepalive: true,
+// which Chromium still caps to a small request-body size that a real mindmap can
+// exceed). We can't read a response from a beacon, so the queued pending-save
+// entry is written unconditionally and left for initAutosave's own
+// clientUpdatedAt check on next load to decide whether it was actually needed —
+// if this send did land, the server's updatedAt will have moved on and the
+// queued copy will correctly be recognized as stale and discarded then.
+function flushOnUnload(endpoint: string) {
+  const state = useEditorStore.getState();
+  if (!state.dirty || state.saveStatus === "saving") return;
+  if (roomActiveRef.current && !isElectedSaverRef.current()) {
+    useEditorStore.setState({ dirty: false, saveStatus: "saved" });
+    return;
+  }
+
+  const content: MindmapContent = { nodes: state.nodes, edges: state.edges };
+  writePendingSave(endpoint, { content, title: state.title, clientUpdatedAt: state.lastSyncedUpdatedAt });
+
+  const payload = JSON.stringify({
+    title: state.title,
+    content,
+    clientUpdatedAt: state.lastSyncedUpdatedAt,
+    thumbnail: null,
+  });
+
+  if (typeof navigator.sendBeacon === "function") {
+    navigator.sendBeacon(endpoint, new Blob([payload], { type: "application/json" }));
+  } else {
+    // Only reachable on a browser old enough to lack sendBeacon entirely.
+    void fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: payload,
+    });
   }
 }
 
 export function initAutosave(endpoint: string): () => void {
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // loadMindmap has already run by this point (mindmap-editor-shell and
+  // shared-mindmap-viewer both call it in an effect declared before this one, and
+  // React runs same-render effects in declaration order) — lastSyncedUpdatedAt
+  // already reflects the freshly-loaded server state, so it's safe to check here.
+  recoverPendingSave(endpoint);
 
   const unsubscribe = useEditorStore.subscribe(
     (s) => s.revision,
@@ -130,7 +249,7 @@ export function initAutosave(endpoint: string): () => void {
   const fallback = setInterval(() => void flush(endpoint), FALLBACK_INTERVAL_MS);
 
   function handleVisibilityOrUnload() {
-    if (useEditorStore.getState().dirty) void flush(endpoint, false);
+    flushOnUnload(endpoint);
   }
   window.addEventListener("beforeunload", handleVisibilityOrUnload);
   document.addEventListener("visibilitychange", handleVisibilityOrUnload);
