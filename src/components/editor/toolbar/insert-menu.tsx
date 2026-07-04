@@ -41,8 +41,14 @@ export function InsertMenu({ endpoint }: InsertMenuProps) {
   // previous default) — reads as "insert here, in front of me" regardless of
   // where the mouse drifted before opening this menu. Computed fresh on each call
   // (not memoized) since pan/zoom can change while the menu or a file picker is open.
-  function viewportCenter() {
+  // Returns undefined (falling back to the store action's own default placement)
+  // if the pane hasn't been measured yet or zoom is somehow non-finite — a stale
+  // or zero measurement here would otherwise place the node off-screen instead of
+  // just landing somewhere less exact.
+  function viewportCenter(): { x: number; y: number } | undefined {
+    if (!paneWidth || !paneHeight) return undefined;
     const { x, y, zoom } = getViewport();
+    if (!zoom || !Number.isFinite(zoom)) return undefined;
     return { x: (paneWidth / 2 - x) / zoom, y: (paneHeight / 2 - y) / zoom };
   }
 
