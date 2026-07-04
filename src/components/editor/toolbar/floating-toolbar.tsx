@@ -9,7 +9,6 @@ import { useHistoryStore } from "@/store/history-store";
 import { deleteNodeWithUndo } from "@/lib/mindmap/delete-with-undo";
 import { NodeColorPicker } from "@/components/editor/nodes/node-color-picker";
 import { NodeShapePicker } from "@/components/editor/nodes/node-shape-picker";
-import { NodeSizePicker } from "@/components/editor/nodes/node-size-picker";
 import { NodeTextSizePicker } from "@/components/editor/nodes/node-text-size-picker";
 import { NodeIconPicker } from "@/components/editor/nodes/node-icon-picker";
 import { InsertMenu } from "@/components/editor/toolbar/insert-menu";
@@ -96,7 +95,6 @@ export function FloatingToolbar({ endpoint }: FloatingToolbarProps) {
           <NodeColorPicker nodeId={selectedNodeId} />
           <NodeIconPicker nodeId={selectedNodeId} />
           <NodeShapePicker nodeId={selectedNodeId} />
-          <NodeSizePicker nodeId={selectedNodeId} />
           <NodeTextSizePicker nodeId={selectedNodeId} />
           <Divider />
           <ToolbarButton

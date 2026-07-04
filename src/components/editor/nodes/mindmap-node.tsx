@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef } from "react";
-import { Handle, Position, NodeResizer, useConnection, type NodeProps } from "@xyflow/react";
+import { Handle, Position, NodeResizeControl, useConnection, type NodeProps } from "@xyflow/react";
 import {
   ChevronRight,
   Info,
@@ -75,6 +75,46 @@ const HANDLE_STRIPS: { id: string; position: Position; style: React.CSSPropertie
   { id: "left", position: Position.Left, style: { ...STRIP_BASE, left: -5, top: 0, width: 10, height: "100%" } },
   { id: "right", position: Position.Right, style: { ...STRIP_BASE, right: -5, left: "auto", top: 0, width: 10, height: "100%" } },
 ];
+
+const CORNER_POSITIONS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
+
+// A node resizes only from its 4 corners — no separate top/bottom/left/right edge
+// handles (NodeResizer renders all 8 by default) — so a drag always scales both
+// dimensions from one point, never stretches just width or just height in
+// isolation. Handles stay invisible (opacity 0, not unmounted) the same way the
+// old NodeResizer-based ones did: dragging still works from these exact hit areas,
+// just without a square cluttering a node that isn't being resized right now — the
+// node's own border already shows selection.
+function CornerResizeHandles({
+  color,
+  minWidth,
+  minHeight,
+  keepAspectRatio,
+  onResizeStart,
+}: {
+  color: string;
+  minWidth: number;
+  minHeight: number;
+  keepAspectRatio?: boolean;
+  onResizeStart: () => void;
+}) {
+  return (
+    <>
+      {CORNER_POSITIONS.map((position) => (
+        <NodeResizeControl
+          key={position}
+          position={position}
+          color={color}
+          minWidth={minWidth}
+          minHeight={minHeight}
+          keepAspectRatio={keepAspectRatio}
+          onResizeStart={onResizeStart}
+          style={{ width: 12, height: 12, zIndex: 20, opacity: 0, background: "transparent", border: "none" }}
+        />
+      ))}
+    </>
+  );
+}
 
 // Three idea sizes scale the label text, the card's width bounds, and its padding
 // together, so a node reads as visually bigger/smaller without any change to tree or
@@ -163,9 +203,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const fileOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.fileOnly ?? false);
   const textOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.textOnly ?? false);
   const sticky = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.sticky ?? false);
-  // Explicit dimensions once an image node has been manually resized (NodeResizer
-  // writes these top-level props via onNodesChange). Undefined until first resize —
-  // the node is content-sized (image at its preset width) up to that point.
+  // Explicit dimensions once an image node has been manually resized (the corner
+  // handles below write these top-level props via onNodesChange). Undefined until
+  // first resize — the node is content-sized (image at its preset width) up to
+  // that point.
   const explicitWidth = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.width);
   const explicitHeight = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.height);
   const note = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.note);
@@ -338,9 +379,9 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // A standalone image node: just the uploaded image (or a placeholder until the
   // upload lands), no label/dot/card chrome. Still fully a node — draggable,
   // connectable via the shared strips, selectable, deletable, and freely resizable
-  // by dragging its corner handles (NodeResizer), which keeps the image's aspect
-  // ratio. Until the first manual resize it's content-sized at the S/M/L preset
-  // width; after, it fills the explicit width/height React Flow sets on the node.
+  // by dragging its corner handles, which keep the image's aspect ratio. Until the
+  // first manual resize it's content-sized at the S/M/L preset width; after, it
+  // fills the explicit width/height React Flow sets on the node.
   if (imageOnly) {
     const hasExplicitSize = explicitWidth != null && explicitHeight != null;
     return (
@@ -366,9 +407,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             alt={label || "Image"}
             // max-w-none overrides Tailwind Preflight's `img { max-width: 100% }`,
             // which would otherwise cap the image to its parent's width — and the
-            // parent is shrink-to-fit around this very image, so with NodeResizer's
-            // absolutely-positioned controls also present that resolves to 0 and the
-            // node never measures itself out of React Flow's initial hidden state.
+            // parent is shrink-to-fit around this very image, so with the corner
+            // handles' absolutely-positioned controls also present that resolves
+            // to 0 and the node never measures itself out of React Flow's initial
+            // hidden state.
             className={cn(
               "block max-w-none rounded-xl object-contain",
               hasExplicitSize ? "size-full" : "max-h-[420px]",
@@ -395,18 +437,11 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             Handles are enlarged and given a high z-index for the same reason: the
             default 5px handle is too easily covered by the 10px-thick strips. */}
         {selected && !readOnly && (
-          <NodeResizer
+          <CornerResizeHandles
             color={color ?? "var(--primary)"}
             keepAspectRatio
             minWidth={60}
             minHeight={40}
-            // Invisible (not unmounted) — dragging still works from these exact
-            // hit areas, just without the corner squares/outline box cluttering a
-            // node that isn't being resized right this moment. The node's own
-            // border already shows selection (see borderColor above), so this
-            // outline would only have been a redundant, floating extra rectangle.
-            handleStyle={{ width: 12, height: 12, zIndex: 20, opacity: 0 }}
-            lineStyle={{ opacity: 0 }}
             // One undo entry per whole resize gesture, not one per pointer-move
             // frame — same treatment as a node drag (commitBeforeDrag on start).
             onResizeStart={commitBeforeDrag}
@@ -512,17 +547,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         {infoButton}
         {directionalArrows}
         {selected && !readOnly && (
-          <NodeResizer
+          <CornerResizeHandles
             color={color ?? "var(--primary)"}
             minWidth={40}
             minHeight={24}
-            // Invisible (not unmounted) — dragging still works from these exact
-            // hit areas, just without the corner squares/outline box cluttering a
-            // node that isn't being resized right this moment. The node's own
-            // border already shows selection (see borderColor above), so this
-            // outline would only have been a redundant, floating extra rectangle.
-            handleStyle={{ width: 12, height: 12, zIndex: 20, opacity: 0 }}
-            lineStyle={{ opacity: 0 }}
             onResizeStart={commitBeforeDrag}
           />
         )}
@@ -594,17 +622,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         {infoButton}
         {directionalArrows}
         {selected && !readOnly && (
-          <NodeResizer
+          <CornerResizeHandles
             color={textColor}
             minWidth={100}
             minHeight={80}
-            // Invisible (not unmounted) — dragging still works from these exact
-            // hit areas, just without the corner squares/outline box cluttering a
-            // node that isn't being resized right this moment. The node's own
-            // border already shows selection (see borderColor above), so this
-            // outline would only have been a redundant, floating extra rectangle.
-            handleStyle={{ width: 12, height: 12, zIndex: 20, opacity: 0 }}
-            lineStyle={{ opacity: 0 }}
             onResizeStart={commitBeforeDrag}
           />
         )}
@@ -614,9 +635,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
 
   const isPolygon = POLYGON_SHAPES.has(shape);
   // Same explicit-dimensions convention as the image node above: undefined until the
-  // card is manually resized (NodeResizer below), content-sized via the S/M/L preset
-  // up to that point. Once resized, the preset's own min/max-width bounds no longer
-  // apply — the whole point of dragging a handle is to go past them either way.
+  // card is manually resized (the corner handles below), content-sized via the
+  // S/M/L preset up to that point. Once resized, the preset's own min/max-width
+  // bounds no longer apply — the whole point of dragging a handle is to go past
+  // them either way.
   const hasExplicitSize = explicitWidth != null && explicitHeight != null;
 
   // A polygon can't shrink-wrap its label like a plain rectangle does (there's no
@@ -820,12 +842,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           keepAspectRatio — unlike an image, a text card's width and height are
           independent. */}
       {selected && !readOnly && (
-        <NodeResizer
+        <CornerResizeHandles
           color={color ?? "var(--primary)"}
           minWidth={100}
           minHeight={44}
-          handleStyle={{ width: 12, height: 12, zIndex: 20, opacity: 0 }}
-          lineStyle={{ opacity: 0 }}
           onResizeStart={commitBeforeDrag}
         />
       )}
