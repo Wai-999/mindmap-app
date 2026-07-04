@@ -82,6 +82,7 @@ interface EditorState {
   updateNodeColor: (id: string, color: string) => void;
   updateNodeShape: (id: string, shape: MindmapNodeData["shape"]) => void;
   updateNodeSize: (id: string, size: MindmapNodeData["size"]) => void;
+  updateNodeFontSize: (id: string, fontSize: MindmapNodeData["fontSize"]) => void;
   updateNodeIcon: (id: string, icon: MindmapNodeData["icon"]) => void;
   updateNodeNote: (id: string, note: string) => void;
   updateNodeTask: (id: string, task: MindmapNodeData["task"]) => void;
@@ -376,6 +377,20 @@ export const useEditorStore = create<EditorState>()(
       commitHistory(state.nodes, state.edges);
       set((s) => ({
         nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, size } } : n)),
+        dirty: true,
+        revision: s.revision + 1,
+      }));
+    },
+
+    updateNodeFontSize: (id, fontSize) => {
+      const state = get();
+      if (state.readOnly) return;
+      const target = state.nodes.find((n) => n.id === id);
+      if (!target || target.data.fontSize === fontSize) return;
+
+      commitHistory(state.nodes, state.edges);
+      set((s) => ({
+        nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, fontSize } } : n)),
         dirty: true,
         revision: s.revision + 1,
       }));

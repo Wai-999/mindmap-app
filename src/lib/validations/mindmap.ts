@@ -33,6 +33,12 @@ export const nodeDataSchema = z.object({
   collapsed: z.boolean().optional(),
   shape: nodeShapeSchema.optional(),
   size: nodeSizeSchema.optional(),
+  // Explicit label font size (px), overriding both the small/medium/large preset and
+  // the dynamic size a manually-resized node would otherwise get (see
+  // dynamicFontSize in node-style.ts) — set only once the user adjusts it via the
+  // text-size control; absent means "let the node's own size drive it," same
+  // fallback convention as size above.
+  fontSize: z.number().min(10).max(64).optional(),
   // Renders the node as just its uploaded image (no label row, color dot, or card
   // chrome) — set when a node is created via "Add file" with an image upload
   // (see fileOnly below for a non-image upload through that same entry point).

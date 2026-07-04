@@ -154,6 +154,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   const collapsed = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.collapsed ?? false);
   const shape = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.shape ?? "rounded");
   const size = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.size ?? "medium");
+  // Set only once the user adjusts it via NodeTextSizePicker — takes priority over
+  // both the size preset and dynamicFontSize's box-driven calc below, in every
+  // render branch that shows the label as real (scalable) text.
+  const explicitFontSize = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.fontSize);
   const icon = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.icon);
   const imageOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.imageOnly ?? false);
   const fileOnly = useEditorStore((s) => s.nodes.find((n) => n.id === id)?.data.fileOnly ?? false);
@@ -396,7 +400,13 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             keepAspectRatio
             minWidth={60}
             minHeight={40}
-            handleStyle={{ width: 12, height: 12, borderRadius: 3, zIndex: 20 }}
+            // Invisible (not unmounted) — dragging still works from these exact
+            // hit areas, just without the corner squares/outline box cluttering a
+            // node that isn't being resized right this moment. The node's own
+            // border already shows selection (see borderColor above), so this
+            // outline would only have been a redundant, floating extra rectangle.
+            handleStyle={{ width: 12, height: 12, zIndex: 20, opacity: 0 }}
+            lineStyle={{ opacity: 0 }}
             // One undo entry per whole resize gesture, not one per pointer-move
             // frame — same treatment as a node drag (commitBeforeDrag on start).
             onResizeStart={commitBeforeDrag}
@@ -451,8 +461,8 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     const hasExplicitSize = explicitWidth != null && explicitHeight != null;
     // Once manually resized, the text tracks the box's actual height instead of
     // staying frozen at the small/medium/large preset (same treatment as the
-    // main card render path below).
-    const fontSize = hasExplicitSize ? dynamicFontSize(explicitHeight) : undefined;
+    // main card render path below) — unless the user has set an explicit size.
+    const fontSize = explicitFontSize ?? (hasExplicitSize ? dynamicFontSize(explicitHeight) : undefined);
     return (
       <div
         className={cn("group relative", hasExplicitSize && "size-full")}
@@ -506,7 +516,13 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             color={color ?? "var(--primary)"}
             minWidth={40}
             minHeight={24}
-            handleStyle={{ width: 12, height: 12, borderRadius: 3, zIndex: 20 }}
+            // Invisible (not unmounted) — dragging still works from these exact
+            // hit areas, just without the corner squares/outline box cluttering a
+            // node that isn't being resized right this moment. The node's own
+            // border already shows selection (see borderColor above), so this
+            // outline would only have been a redundant, floating extra rectangle.
+            handleStyle={{ width: 12, height: 12, zIndex: 20, opacity: 0 }}
+            lineStyle={{ opacity: 0 }}
             onResizeStart={commitBeforeDrag}
           />
         )}
@@ -524,8 +540,8 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     const textColor = readableTextColor(bg);
     // Once manually resized, the text tracks the box's actual height instead of
     // staying frozen at the small/medium/large preset (same treatment as the
-    // main card render path below).
-    const fontSize = hasExplicitSize ? dynamicFontSize(explicitHeight) : undefined;
+    // main card render path below) — unless the user has set an explicit size.
+    const fontSize = explicitFontSize ?? (hasExplicitSize ? dynamicFontSize(explicitHeight) : undefined);
     return (
       <div
         className={cn("group relative rounded-lg p-4", hasExplicitSize && "size-full")}
@@ -582,7 +598,13 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             color={textColor}
             minWidth={100}
             minHeight={80}
-            handleStyle={{ width: 12, height: 12, borderRadius: 3, zIndex: 20 }}
+            // Invisible (not unmounted) — dragging still works from these exact
+            // hit areas, just without the corner squares/outline box cluttering a
+            // node that isn't being resized right this moment. The node's own
+            // border already shows selection (see borderColor above), so this
+            // outline would only have been a redundant, floating extra rectangle.
+            handleStyle={{ width: 12, height: 12, zIndex: 20, opacity: 0 }}
+            lineStyle={{ opacity: 0 }}
             onResizeStart={commitBeforeDrag}
           />
         )}
@@ -618,12 +640,11 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // A polygon's text always tracks its (fixed-default or resized) real height —
   // there's no shrink-to-fit case to preserve a preset look for, unlike the plain
   // rectangle/pill card, which only switches to dynamic sizing once manually
-  // resized (hasExplicitSize) and otherwise keeps its original preset look.
-  const computedFontSize = isPolygon
-    ? dynamicFontSize(polygonHeight)
-    : hasExplicitSize
-      ? dynamicFontSize(explicitHeight)
-      : undefined;
+  // resized (hasExplicitSize) and otherwise keeps its original preset look. Either
+  // way, an explicit user-set size takes priority over both.
+  const computedFontSize =
+    explicitFontSize ??
+    (isPolygon ? dynamicFontSize(polygonHeight) : hasExplicitSize ? dynamicFontSize(explicitHeight) : undefined);
 
   return (
     <div
@@ -803,7 +824,8 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           color={color ?? "var(--primary)"}
           minWidth={100}
           minHeight={44}
-          handleStyle={{ width: 12, height: 12, borderRadius: 3, zIndex: 20 }}
+          handleStyle={{ width: 12, height: 12, zIndex: 20, opacity: 0 }}
+          lineStyle={{ opacity: 0 }}
           onResizeStart={commitBeforeDrag}
         />
       )}

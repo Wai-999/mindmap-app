@@ -12,26 +12,46 @@ interface Point {
   y: number;
 }
 
-// Where the line from this rect's center toward `target` crosses the rect's border.
-// Standard React Flow floating-edges math: normalize the center-to-center vector by
-// the rect's half-extents (L1), which maps the rectangle border to the unit diamond
-// and back — cheap, and always lands exactly on the border.
+function center(rect: Rect): Point {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+// Which of a rect's 4 sides best faces `target`, using whichever axis (horizontal or
+// vertical) has the larger separation. Ties (equal separation) resolve to a
+// horizontal side, matching the >= below.
+function dominantSide(rect: Rect, target: Point): Position {
+  const c = center(rect);
+  const dx = target.x - c.x;
+  const dy = target.y - c.y;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? Position.Right : Position.Left;
+  return dy >= 0 ? Position.Bottom : Position.Top;
+}
+
+// The exact midpoint of one side of a rect.
+function sideMidpoint(rect: Rect, side: Position): Point {
+  const c = center(rect);
+  switch (side) {
+    case Position.Left:
+      return { x: rect.x, y: c.y };
+    case Position.Right:
+      return { x: rect.x + rect.width, y: c.y };
+    case Position.Top:
+      return { x: c.x, y: rect.y };
+    case Position.Bottom:
+    default:
+      return { x: c.x, y: rect.y + rect.height };
+  }
+}
+
+// Every connection docks at one of exactly 4 fixed points per node — the midpoint of
+// whichever side faces `target` — rather than a continuously-variable point along the
+// border. That's a deliberate structure/readability trade: a node reads as a clean
+// diagram with at most 4 distinct exit points, however many edges actually leave from
+// each, and any two edges leaving toward the same side automatically share the
+// identical exit point (it depends only on which side is dominant, not on the
+// specific target), no extra grouping logic needed.
 export function getRectIntersection(rect: Rect, target: Point): Point {
-  const w = rect.width / 2;
-  const h = rect.height / 2;
-  const cx = rect.x + w;
-  const cy = rect.y + h;
-
-  const dx = (target.x - cx) / (2 * w) - (target.y - cy) / (2 * h);
-  const dy = (target.x - cx) / (2 * w) + (target.y - cy) / (2 * h);
-  const scale = 1 / (Math.abs(dx) + Math.abs(dy) || 1);
-  const nx = scale * dx;
-  const ny = scale * dy;
-
-  return {
-    x: w * (nx + ny) + cx,
-    y: h * (-nx + ny) + cy,
-  };
+  return sideMidpoint(rect, dominantSide(rect, target));
 }
 
 // Which side of the rect a border point sits on — getBezierPath needs a Position per
@@ -58,26 +78,14 @@ export interface FloatingEdgeParams {
   targetPosition: Position;
 }
 
-function center(rect: Rect): Point {
-  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-}
-
-// Both endpoints of a free-form link edge: each sits on its own node's border, facing
-// the other node's center — so the connection visually rotates around the node as
-// either end is dragged, instead of staying pinned to one fixed side.
-//
-// sourceAimPoint overrides what the SOURCE side aims at (normally the target's own
-// center) — used when several sibling edges leave the same node toward roughly the
-// same side, so they all aim at their group's shared centroid instead of each
-// competing for its own slightly different exit point on a small parent (see
-// shared-edge-anchor.ts). The target side is unaffected: it always aims back at the
-// real source center, since a target only has ever the one incoming edge in practice.
-export function getFloatingEdgeParams(
-  source: Rect,
-  target: Rect,
-  sourceAimPoint?: Point,
-): FloatingEdgeParams {
-  const sourcePoint = getRectIntersection(source, sourceAimPoint ?? center(target));
+// Both endpoints of a connection: each sits on its own node's border, at the
+// midpoint of whichever side faces the other node — so the connection rotates
+// between (at most) 4 fixed docking points as either end moves, instead of staying
+// pinned to one fixed side or floating continuously. Any other edges leaving the
+// same source toward the same side land on this identical point automatically,
+// since it depends only on which side is dominant, not on the specific target.
+export function getFloatingEdgeParams(source: Rect, target: Rect): FloatingEdgeParams {
+  const sourcePoint = getRectIntersection(source, center(target));
   const targetPoint = getRectIntersection(target, center(source));
 
   return {

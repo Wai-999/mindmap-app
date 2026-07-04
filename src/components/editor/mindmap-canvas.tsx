@@ -42,6 +42,7 @@ export function MindmapCanvas() {
   const selectNode = useEditorStore((s) => s.selectNode);
   const selectEdge = useEditorStore((s) => s.selectEdge);
   const setEditingNode = useEditorStore((s) => s.setEditingNode);
+  const setFocusedNode = useEditorStore((s) => s.setFocusedNode);
   const commitBeforeDrag = useEditorStore((s) => s.commitBeforeDrag);
   const addLinkEdge = useEditorStore((s) => s.addLinkEdge);
   const addLinkedNode = useEditorStore((s) => s.addLinkedNode);
@@ -71,8 +72,11 @@ export function MindmapCanvas() {
         return;
       }
       selectNode(null);
+      // Tapping empty canvas is also the quickest way out of focus mode — no need to
+      // reach for Escape or the banner's own "Exit" button first.
+      setFocusedNode(null);
     },
-    [readOnly, addRootNode, screenToFlowPosition, selectNode],
+    [readOnly, addRootNode, screenToFlowPosition, selectNode, setFocusedNode],
   );
 
   const { nodes: baseNodes, edges: baseEdges } = useMemo(() => {
