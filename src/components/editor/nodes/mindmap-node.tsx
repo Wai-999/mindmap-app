@@ -101,6 +101,43 @@ const SHAPE_POINTS: Record<string, string> = {
   parallelogram: "20,10 100,10 80,90 0,90",
   chevron: "0,25 60,25 60,5 100,50 60,95 60,75 0,75",
 };
+// The largest axis-aligned rectangle that fits inside each polygon above, as
+// fractions of the box's own width/height (with a little extra margin beyond the
+// true geometric maximum for breathing room) — content is padded by exactly these
+// fractions so a label stays inside the visible outline instead of overflowing
+// past its slanted edges. Worked out per shape from SHAPE_POINTS:
+// - diamond: vertices at the box's edge-midpoints, so the biggest inscribed
+//   rectangle is exactly the centered 50%-width/50%-height box.
+// - triangle: apex up, base at the bottom — the biggest rectangle sitting on the
+//   base is 50% of the base width and the bottom 50% of the height.
+// - pentagon: the lower (flat-bottomed) trapezoid section is the safe area — its
+//   narrowest point (the base, 56% wide) bounds the whole section from the
+//   shoulder line down.
+// - parallelogram: a full-height band clear of both slanted sides.
+// - chevron: the rectangular body to the left of the arrowhead.
+const SHAPE_SAFE_ZONE: Record<string, { top: number; right: number; bottom: number; left: number }> = {
+  diamond: { top: 0.28, right: 0.28, bottom: 0.28, left: 0.28 },
+  triangle: { top: 0.54, right: 0.27, bottom: 0.08, left: 0.27 },
+  pentagon: { top: 0.37, right: 0.24, bottom: 0.13, left: 0.24 },
+  parallelogram: { top: 0.12, right: 0.22, bottom: 0.12, left: 0.22 },
+  chevron: { top: 0.28, right: 0.44, bottom: 0.28, left: 0.06 },
+};
+// A polygon shape can't shrink-wrap its label the way a plain rectangle does — the
+// safe-zone padding above only keeps content inside the outline if the box's own
+// size is actually known, which shrink-to-fit sizing can't give us. So an
+// un-resized polygon node gets a fixed default size instead (still scaled by the
+// small/medium/large preset), and only grows from there once manually resized.
+const SHAPE_DEFAULT_WIDTH: Record<NodeSize, number> = { small: 130, medium: 170, large: 230 };
+// Height-to-width ratio of that default box, per shape — diamond/pentagon read
+// naturally square-ish, triangle a touch shorter, parallelogram/chevron are
+// intentionally wide rather than square.
+const SHAPE_ASPECT: Record<string, number> = {
+  diamond: 1,
+  triangle: 0.86,
+  pentagon: 0.95,
+  parallelogram: 0.55,
+  chevron: 0.5,
+};
 
 // Perceived-brightness check (YIQ) so a sticky note's text stays legible against
 // whichever palette color it's using as its full background fill — the palette
@@ -112,6 +149,16 @@ function readableTextColor(hex: string): string {
   const b = parseInt(hex.slice(5, 7), 16);
   const yiq = (r * 299 + g * 587 + b * 114) / 1000;
   return yiq >= 150 ? "#1f2937" : "#ffffff";
+}
+
+// Text size that actually tracks the node's own rendered height, rather than
+// staying frozen at whatever the small/medium/large preset picked when the node
+// was created — otherwise dragging a node much bigger via NodeResizer leaves its
+// label looking tiny and lost inside the now-much-larger box. Linear fit anchored
+// to the preset sizes' own typical heights (small ~36px → 12px text, large ~76px
+// → 18px text), then keeps extrapolating past them as the box grows or shrinks.
+function dynamicFontSize(height: number): number {
+  return Math.min(96, Math.max(11, height * 0.2 + 4));
 }
 
 function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
@@ -419,6 +466,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // Enter/Escape to commit).
   if (textOnly) {
     const hasExplicitSize = explicitWidth != null && explicitHeight != null;
+    // Once manually resized, the text tracks the box's actual height instead of
+    // staying frozen at the small/medium/large preset (same treatment as the
+    // main card render path below).
+    const fontSize = hasExplicitSize ? dynamicFontSize(explicitHeight) : undefined;
     return (
       <div
         className={cn("group relative", hasExplicitSize && "size-full")}
@@ -427,6 +478,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
             : undefined,
           borderRadius: 8,
+          fontSize,
         }}
       >
         {connectionHandles}
@@ -437,7 +489,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             suppressContentEditableWarning
             className={cn(
               "leading-snug outline-none",
-              SIZE_TEXT[size],
+              !fontSize && SIZE_TEXT[size],
               hasExplicitSize ? "size-full" : cn("min-w-[4ch]", SIZE_WIDTH[size]),
             )}
             onBlur={commitEdit}
@@ -455,7 +507,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           <span
             className={cn(
               "block leading-snug break-words",
-              SIZE_TEXT[size],
+              !fontSize && SIZE_TEXT[size],
               hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
               !label && "text-muted-foreground italic",
             )}
@@ -486,6 +538,10 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
     const hasExplicitSize = explicitWidth != null && explicitHeight != null;
     const bg = color ?? "#f59e0b";
     const textColor = readableTextColor(bg);
+    // Once manually resized, the text tracks the box's actual height instead of
+    // staying frozen at the small/medium/large preset (same treatment as the
+    // main card render path below).
+    const fontSize = hasExplicitSize ? dynamicFontSize(explicitHeight) : undefined;
     return (
       <div
         className={cn("group relative rounded-lg p-4", hasExplicitSize && "size-full")}
@@ -497,6 +553,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             : selected
               ? `0 0 0 2px var(--card), 0 0 0 4px ${bg}`
               : undefined,
+          fontSize,
         }}
       >
         {connectionHandles}
@@ -507,7 +564,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             suppressContentEditableWarning
             className={cn(
               "leading-snug outline-none",
-              SIZE_TEXT[size],
+              !fontSize && SIZE_TEXT[size],
               hasExplicitSize ? "size-full" : cn("min-w-[6ch]", SIZE_WIDTH[size]),
             )}
             onBlur={commitEdit}
@@ -525,7 +582,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           <span
             className={cn(
               "block leading-snug break-words",
-              SIZE_TEXT[size],
+              !fontSize && SIZE_TEXT[size],
               hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
               !label && "italic opacity-60",
             )}
@@ -555,20 +612,51 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   // apply — the whole point of dragging a handle is to go past them either way.
   const hasExplicitSize = explicitWidth != null && explicitHeight != null;
 
+  // A polygon can't shrink-wrap its label like a plain rectangle does (there's no
+  // way to keep content clear of a diagonal edge without knowing the box's actual
+  // pixel size), so it gets a fixed default box instead of content-driven sizing —
+  // still scaled by the size preset, and still freely resizable past that default
+  // via the handles below. safeZonePx below is then an exact, per-shape computed
+  // inset (see SHAPE_SAFE_ZONE) that keeps the label inside the visible outline
+  // rather than overflowing past it.
+  const polygonWidth = hasExplicitSize ? explicitWidth : SHAPE_DEFAULT_WIDTH[size];
+  const polygonHeight = hasExplicitSize
+    ? explicitHeight
+    : polygonWidth * (SHAPE_ASPECT[shape] ?? 1);
+  const safeZone = SHAPE_SAFE_ZONE[shape];
+  const safeZonePx = safeZone && {
+    paddingTop: polygonHeight * safeZone.top,
+    paddingRight: polygonWidth * safeZone.right,
+    paddingBottom: polygonHeight * safeZone.bottom,
+    paddingLeft: polygonWidth * safeZone.left,
+  };
+  // A polygon's text always tracks its (fixed-default or resized) real height —
+  // there's no shrink-to-fit case to preserve a preset look for, unlike the plain
+  // rectangle/pill card, which only switches to dynamic sizing once manually
+  // resized (hasExplicitSize) and otherwise keeps its original preset look.
+  const computedFontSize = isPolygon
+    ? dynamicFontSize(polygonHeight)
+    : hasExplicitSize
+      ? dynamicFontSize(explicitHeight)
+      : undefined;
+
   return (
     <div
       className={cn(
-        "group relative text-card-foreground shadow-sm transition-shadow",
-        hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
-        SIZE_TEXT[size],
+        "group relative text-card-foreground transition-shadow",
+        isPolygon ? "overflow-hidden" : hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
+        isPolygon ? undefined : SIZE_TEXT[size],
         isPolygon
-          ? "bg-transparent px-9 py-7"
+          ? "bg-transparent"
           : cn(
               "border-2 bg-card",
               SIZE_PAD[size],
               shape === "rectangle" ? "rounded-none" : shape === "pill" ? "rounded-full" : "rounded-xl",
             ),
-        selected ? "shadow-md" : "hover:shadow-md",
+        // A polygon's shadow is drawn by its own SVG below instead (a box-shadow
+        // here would fall across the invisible rectangular bounding box, not the
+        // shape's actual silhouette).
+        !isPolygon && (selected ? "shadow-md" : "shadow-sm hover:shadow-md"),
       )}
       style={{
         // A polygon's outline is drawn by its own SVG below instead — this div stays
@@ -580,6 +668,11 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         boxShadow: remoteSelectorColors[0]
           ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectorColors[0]}`
           : undefined,
+        fontSize: computedFontSize,
+        // Always the shape's real pixel size (fixed default, or whatever it's been
+        // resized to) — border-box, so safeZonePx's padding below sits inside this,
+        // not added on top of it.
+        ...(isPolygon ? { width: polygonWidth, height: polygonHeight, ...safeZonePx } : undefined),
       }}
     >
       {isPolygon && (
@@ -587,16 +680,23 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         // shape/fill/stroke are drawn here instead, sized to the card's own
         // bounding box — the actual content (and the connection handles below,
         // which anchor to that same box) stays in normal, unrotated layout on top.
+        // The outline is always visible (a neutral border color at rest, the
+        // node's own accent color once selected) — otherwise a white fill on a
+        // near-white canvas makes the whole shape disappear the moment it's
+        // deselected, leaving only the invisible bounding box's card-like
+        // presence (fixed by the drop-shadow filter below, which follows this
+        // exact silhouette instead of that rectangle).
         <svg
           className="pointer-events-none absolute inset-0 -z-10 size-full"
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
+          style={{ filter: "drop-shadow(0 1px 2px rgb(0 0 0 / 0.12))" }}
         >
           <polygon
             points={SHAPE_POINTS[shape]}
             className="fill-card"
-            stroke={selected ? (color ?? "var(--primary)") : "transparent"}
-            strokeWidth={3}
+            stroke={selected ? (color ?? "var(--primary)") : "var(--border)"}
+            strokeWidth={selected ? 3 : 2}
             vectorEffect="non-scaling-stroke"
           />
         </svg>
@@ -629,7 +729,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           <img src={imageUrl} alt="" className="mb-2 h-16 w-full rounded-md object-cover" />
         ))}
 
-      <div className="flex items-center gap-2">
+      <div className={cn("flex items-center gap-2", isPolygon && "size-full justify-center")}>
         {icon ? (
           // An emoji/icon replaces the color dot when set — a bigger, at-a-glance
           // marker. leading-none keeps it vertically centered with the label text.
@@ -647,7 +747,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             ref={editableRef}
             contentEditable
             suppressContentEditableWarning
-            className="min-w-[2ch] flex-1 leading-snug outline-none"
+            className={cn("min-w-[2ch] flex-1 leading-snug outline-none", isPolygon && "text-center")}
             onBlur={commitEdit}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === "Escape") {
@@ -663,6 +763,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
           <span
             className={cn(
               "flex-1 leading-snug break-words",
+              isPolygon && "text-center",
               !label && "text-muted-foreground italic",
             )}
           >

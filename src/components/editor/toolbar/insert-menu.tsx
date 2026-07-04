@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useReactFlow, useStore } from "@xyflow/react";
 import { CirclePlus, Type, StickyNote, Paperclip, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,12 +32,25 @@ export function InsertMenu({ endpoint }: InsertMenuProps) {
   const addFileNode = useEditorStore((s) => s.addFileNode);
   const addAttachment = useEditorStore((s) => s.addAttachment);
   const deleteNodeAndSubtree = useEditorStore((s) => s.deleteNodeAndSubtree);
+  const { getViewport } = useReactFlow();
+  const paneWidth = useStore((s) => s.width);
+  const paneHeight = useStore((s) => s.height);
+
+  // Every Insert action lands its new node at the middle of whatever's currently
+  // visible, instead of wherever the cursor last happened to be hovering (the
+  // previous default) — reads as "insert here, in front of me" regardless of
+  // where the mouse drifted before opening this menu. Computed fresh on each call
+  // (not memoized) since pan/zoom can change while the menu or a file picker is open.
+  function viewportCenter() {
+    const { x, y, zoom } = getViewport();
+    return { x: (paneWidth / 2 - x) / zoom, y: (paneHeight / 2 - y) / zoom };
+  }
 
   async function handleFile(file: File) {
     // Create the node first so it appears immediately (placeholder), then fill it in
     // with the uploaded file. nodeId is client-generated, and attachments correlate
     // by that id, so the order is fine.
-    const nodeId = addFileNode(file.name, file.type.startsWith("image/"));
+    const nodeId = addFileNode(file.name, file.type.startsWith("image/"), viewportCenter());
     if (!nodeId) return; // read-only, shouldn't happen (button is hidden then)
 
     setUploading(true);
@@ -93,13 +107,13 @@ export function InsertMenu({ endpoint }: InsertMenuProps) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center">
-          <DropdownMenuItem onClick={() => addRootNode()}>
+          <DropdownMenuItem onClick={() => addRootNode(viewportCenter())}>
             <CirclePlus /> Idea
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => addTextNode()}>
+          <DropdownMenuItem onClick={() => addTextNode(viewportCenter())}>
             <Type /> Text
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => addStickyNote()}>
+          <DropdownMenuItem onClick={() => addStickyNote(viewportCenter())}>
             <StickyNote /> Sticky note
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => inputRef.current?.click()}>
