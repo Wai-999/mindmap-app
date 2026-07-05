@@ -1,21 +1,215 @@
-// Electron main process. Plain CommonJS on purpose — this is glue code (open a
-// window pointed at the hosted app), not application logic.
+// Electron main process. Plain CommonJS on purpose — this is glue code (spawn the
+// existing Next.js standalone server, load it in a window), not app logic, so it
+// doesn't need the TypeScript/React toolchain the rest of the app uses.
 //
-// The desktop app is a thin client: every account/mindmap lives on the hosted
-// deployment at HOSTED_URL below, the same place a plain browser would reach — so
-// logging in here and on any other device (another Mac, a browser, a phone) shares
-// the same data. There's no local server and no local database to keep in sync.
-const { app, BrowserWindow, dialog } = require("electron");
+// Fully local/offline by design: this spawns its own Next.js server and its own
+// SQLite database file on the user's own machine (see ensureFirstRunSetup below) —
+// no account or data is shared with any other install or the hosted web deployment.
+const { app, BrowserWindow, dialog, utilityProcess } = require("electron");
+const { execFileSync } = require("node:child_process");
+const net = require("node:net");
+const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
-// Update this whenever the hosted deployment's URL changes (e.g. a custom domain).
-const HOSTED_URL = "https://mindmap-app-ruby.vercel.app";
+const CONFIG_ENV_TEMPLATE = `# Optional settings for Mindmap. Uncomment and fill in any of these, then quit and
+# reopen the app, to enable the matching feature. Leave everything commented to run
+# fully solo/offline, exactly as it does by default.
 
+# Real-time collaboration (Liveblocks) — get a secret key from
+# https://liveblocks.io/dashboard/apikeys
+# LIVEBLOCKS_SECRET_KEY=
+
+# Send real "forgot password" emails via SMTP. Without this, the reset link has
+# nowhere to go — a packaged app has no visible console to log a dev-mode fallback
+# link to, unlike running the project with \`npm run dev\`.
+# SMTP_HOST=
+# SMTP_PORT=587
+# SMTP_USER=
+# SMTP_PASSWORD=
+# EMAIL_FROM=Mindmap <noreply@example.com>
+`;
+
+// Electron otherwise derives app.getPath("userData") from package.json's "name"
+// field ("mindmap-app"), not the "Mindmap" product name — set explicitly so the
+// on-disk folder (~/Library/Application Support/Mindmap on macOS, %APPDATA%\Mindmap
+// on Windows) matches what's documented.
 app.setName("Mindmap");
 
+let serverProcess = null;
 let mainWindow = null;
 
-function createWindow() {
+function getResourcesRoot() {
+  // Packaged: electron-builder's extraResources land in Contents/Resources (macOS)
+  // or resources/ next to the .exe (Windows). Running from source (`electron .`,
+  // before packaging): the same layout exists relative to the project root once
+  // `npm run build` + the template-db script have run, which lets the full
+  // first-run flow be tested without building an installer every time.
+  return app.isPackaged ? process.resourcesPath : path.join(__dirname, "..");
+}
+
+function getStandaloneTarPath() {
+  return app.isPackaged
+    ? path.join(getResourcesRoot(), "standalone.tar.gz")
+    : path.join(getResourcesRoot(), ".next", "standalone.tar.gz");
+}
+
+function getTemplateDbPath() {
+  return app.isPackaged
+    ? path.join(getResourcesRoot(), "template.db")
+    : path.join(getResourcesRoot(), "prisma", "local", "template.db");
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+// Hand-rolled on purpose — a handful of `key=value` lines doesn't need the `dotenv`
+// package, and this only ever reads a file this same app wrote the template for.
+function parseEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  const result = {};
+  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (key) result[key] = value;
+  }
+  return result;
+}
+
+// Copies the bundled pre-migrated template database into place on first launch,
+// generates+persists a NEXTAUTH_SECRET so sessions survive app restarts, and
+// extracts the bundled server code. Returns the paths/values startServer() needs to
+// spawn the Next.js server correctly.
+function ensureFirstRunSetup(userDataDir) {
+  fs.mkdirSync(userDataDir, { recursive: true });
+
+  const dbPath = path.join(userDataDir, "mindmap.db");
+  if (!fs.existsSync(dbPath)) {
+    fs.copyFileSync(getTemplateDbPath(), dbPath);
+  }
+
+  const configPath = path.join(userDataDir, "config.json");
+  let config = {};
+  if (fs.existsSync(configPath)) {
+    config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  }
+  if (!config.nextAuthSecret) {
+    config.nextAuthSecret = crypto.randomBytes(32).toString("base64");
+  }
+
+  const envPath = path.join(userDataDir, "config.env");
+  if (!fs.existsSync(envPath)) {
+    fs.writeFileSync(envPath, CONFIG_ENV_TEMPLATE);
+  }
+
+  // The server code is re-extracted whenever the bundled tar changes, so replacing
+  // the app with a newer build actually takes effect — the db/config/env above
+  // persist across that untouched. This is keyed off the tar's own size+mtime, NOT
+  // app.getVersion(): the version stays fixed across rebuilds during active
+  // development, so version-gating silently ran stale code from the first install
+  // forever. A fresh build always writes a new tar (new content → new size, always
+  // a new mtime), so the fingerprint reliably changes exactly when the code does. A
+  // cheap stat, so it costs nothing on an unchanged relaunch (no hashing the whole
+  // archive). `tar` itself (not a bundled library) does the extraction — every
+  // supported OS ships one: macOS/Linux always have, and Windows has shipped a real
+  // bsdtar-based tar.exe in System32 since the 2018 "1803" update (Windows 10 and
+  // 11 both), so this needs no extra dependency bundled into the app.
+  const appDir = path.join(userDataDir, "app");
+  const tarStat = fs.statSync(getStandaloneTarPath());
+  const tarFingerprint = `${tarStat.size}:${tarStat.mtimeMs}`;
+  if (config.extractedTar !== tarFingerprint || !fs.existsSync(path.join(appDir, "server.js"))) {
+    fs.rmSync(appDir, { recursive: true, force: true });
+    fs.mkdirSync(appDir, { recursive: true });
+    execFileSync("tar", ["-xzf", getStandaloneTarPath(), "-C", appDir]);
+    config.extractedTar = tarFingerprint;
+    delete config.extractedVersion; // retire the old version-based key
+  }
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+  return { dbPath, nextAuthSecret: config.nextAuthSecret, envPath, serverPath: path.join(appDir, "server.js") };
+}
+
+async function startServer(userDataDir) {
+  const { dbPath, nextAuthSecret, envPath, serverPath } = ensureFirstRunSetup(userDataDir);
+  const port = await getFreePort();
+  const userEnv = parseEnvFile(envPath);
+
+  // utilityProcess.fork (not child_process.spawn of the Electron binary) is
+  // Electron's supported, cross-platform way to run a Node script inside a
+  // packaged app: it uses the bundled Node runtime (the target machine isn't
+  // guaranteed to have Node at all) and doesn't surface as a confusing second
+  // "exec"/"node" process in the Dock/Task Manager the way re-exec'ing the app
+  // binary would.
+  const child = utilityProcess.fork(serverPath, [], {
+    serviceName: "mindmap-server",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      ...userEnv,
+      PORT: String(port),
+      HOSTNAME: "127.0.0.1",
+      DATABASE_URL: `file:${dbPath}`,
+      NEXTAUTH_SECRET: nextAuthSecret,
+      NEXTAUTH_URL: `http://127.0.0.1:${port}`,
+      // Auth.js v5 only auto-trusts the request Host header when AUTH_URL/
+      // AUTH_TRUST_HOST is set or NODE_ENV isn't "production" (see
+      // @auth/core/lib/utils/env.js) — none of which hold here otherwise, since this
+      // runs on a random loopback port with NODE_ENV=production. Safe to trust
+      // unconditionally: the server only ever binds 127.0.0.1, so no external request
+      // could spoof the Host header in the first place.
+      AUTH_TRUST_HOST: "true",
+      ATTACHMENT_STORAGE_PATH: path.join(userDataDir, "attachments"),
+      NODE_ENV: "production",
+    },
+  });
+
+  // Server output goes to a log file (truncated each launch, not appended — this is
+  // a long-lived personal app, an ever-growing log would be a slow disk-space leak)
+  // rather than being discarded, so a startup problem is diagnosable after the fact.
+  // `end: false` on both pipes: whichever stream closes first must not end the
+  // shared file stream out from under the other.
+  const serverLog = fs.createWriteStream(path.join(userDataDir, "server.log"));
+  child.stdout.pipe(serverLog, { end: false });
+  child.stderr.pipe(serverLog, { end: false });
+
+  serverProcess = child;
+  return port;
+}
+
+function waitForServer(port, { attempts = 40, intervalMs = 250 } = {}) {
+  return new Promise((resolve, reject) => {
+    let tries = 0;
+    const tryOnce = () => {
+      tries += 1;
+      const req = net.connect({ host: "127.0.0.1", port }, () => {
+        req.end();
+        resolve();
+      });
+      req.on("error", () => {
+        req.destroy();
+        if (tries >= attempts) reject(new Error("Server did not start in time"));
+        else setTimeout(tryOnce, intervalMs);
+      });
+    };
+    tryOnce();
+  });
+}
+
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -34,12 +228,25 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // electron:dev points at an already-running `npm run dev` server instead of the
-  // hosted deployment, for testing main-process changes without a real deploy.
-  const url = process.env.ELECTRON_START_URL || HOSTED_URL;
-  mainWindow.loadURL(url).catch((err) => {
-    dialog.showErrorBox("Mindmap couldn't load", `Couldn't reach ${url}:\n\n${err.message}`);
-  });
+  try {
+    const startUrl = process.env.ELECTRON_START_URL;
+    if (startUrl) {
+      // electron:dev — point at an already-running `npm run dev` server instead of
+      // spawning the standalone build, for a fast main-process/window testing loop.
+      await mainWindow.loadURL(startUrl);
+      return;
+    }
+
+    const port = await startServer(app.getPath("userData"));
+    await waitForServer(port);
+    await mainWindow.loadURL(`http://127.0.0.1:${port}`);
+  } catch (err) {
+    dialog.showErrorBox(
+      "Mindmap couldn't start",
+      `Something went wrong starting the local server:\n\n${err.message}`,
+    );
+    app.quit();
+  }
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -61,5 +268,9 @@ if (!gotLock) {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  app.on("before-quit", () => {
+    if (serverProcess) serverProcess.kill();
   });
 }

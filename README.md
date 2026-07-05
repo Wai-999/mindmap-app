@@ -130,45 +130,62 @@ the Postgres swap below first. Point `DATABASE_URL` at a managed Postgres instan
 Railway, RDS, etc.) and set `NEXTAUTH_SECRET` / `NEXTAUTH_URL` in the project's environment
 variables.
 
-### Option D — Desktop app (macOS)
+### Option D — Desktop app (macOS + Windows)
 
-The same app also packages into a native Mac app via Electron — a real `.dmg` you install once and
-launch like any other app, no terminal/Docker required to use it day-to-day.
+The same app also packages into a native desktop app via Electron — install once and launch like
+any other app, no terminal/Docker/hosting required to use it day-to-day.
 
-**This is a thin client, not a bundled server.** `electron/main.js` just opens a window pointed at
-`HOSTED_URL` (a constant at the top of that file) — the real app, database, and attachments all
-live on a deployment made via Option C above. That's what makes "log in on another device with the
-same account" work: every device (this desktop app, a browser, another Mac) talks to the same
-server, so update `HOSTED_URL` to your actual deployment's URL before building. There's no local
-server or local database anymore, so nothing needs syncing between devices.
+**Fully local, not a hosted client.** `electron/main.js` spawns its own copy of the Next.js server
+and its own SQLite database file on the user's own machine (`~/Library/Application
+Support/Mindmap/` on macOS, `%APPDATA%\Mindmap` on Windows) — nothing is shared with the hosted
+Vercel deployment or between separate installs. Each install is its own independent account/data
+store, same as running the project locally with `npm run dev`, just packaged up.
+
+This uses a separate Prisma schema (`prisma/local/schema.prisma`, SQLite) from the one the hosted
+deployment uses (`prisma/schema.prisma`, Postgres) — Prisma's datasource provider is one fixed value
+per schema file, so a single schema can't serve both a bundled-SQLite desktop app and a
+hosted-Postgres web deployment. `npm run electron:prepare` temporarily generates the client from the
+local schema to build the bundle, then restores the main (Postgres) client afterward so `npm run
+dev`/tests are unaffected.
 
 **Building it:**
 
 ```bash
-npm run electron:pack
+npm run electron:pack       # macOS .dmg (current machine's own architecture)
+npm run electron:pack:win   # Windows .zip (portable — unzip and run Mindmap.exe, no installer)
 ```
 
-This produces `release/Mindmap-<version>-arm64.dmg`. Open it, drag Mindmap to Applications.
+Both produce output under `release/`. electron-builder can cross-build the Windows zip target from
+macOS without needing Wine (an NSIS installer would, so this ships a zip instead of an installer
+wizard).
 
-**First launch:** macOS will warn "Apple could not verify this app" — that's expected, since this
-isn't signed with a paid Apple Developer certificate. Right-click the app → **Open** → **Open**
+**First launch (macOS):** macOS will warn "Apple could not verify this app" — that's expected, since
+this isn't signed with a paid Apple Developer certificate. Right-click the app → **Open** → **Open**
 again in the dialog (only needed once). After that it opens normally.
 
-**Getting updates:** new versions are published as new `.dmg`s on the
+**First launch (Windows):** Windows Defender SmartScreen may warn about an unrecognized app (same
+unsigned-app situation as macOS) — click **More info** → **Run anyway**. Unzip the whole folder
+first; don't run `Mindmap.exe` directly out of the zip viewer.
+
+**Enabling collaboration or real password-reset emails:** edit `config.env` in the app's data folder
+(a commented template is created on first launch — same optional keys as `.env.example`:
+`LIVEBLOCKS_SECRET_KEY`, `SMTP_HOST`, etc.), then quit and reopen the app.
+
+**Getting updates:** new versions are published as new releases on the
 [GitHub Releases page](https://github.com/Wai-999/mindmap-app/releases) — download the latest and
-drag it over the old one in Applications.
+replace the old one. Your data isn't touched by an update (it lives outside the app bundle).
 
 **Cutting a new release** (for maintainers):
 
 ```bash
 npm version patch                 # or minor/major — bumps package.json, tags git
 npm run electron:pack             # produces release/Mindmap-x.y.z-arm64.dmg
+npm run electron:pack:win         # produces release/Mindmap-x.y.z-win.zip
 git push && git push --tags
-gh release create vX.Y.Z release/Mindmap-*.dmg --title "vX.Y.Z" --notes "..."
+gh release create vX.Y.Z release/Mindmap-*.dmg release/Mindmap-*-win.zip --title "vX.Y.Z" --notes "..."
 ```
 
-Note: `npm run electron:pack` builds for the machine's own architecture (Apple Silicon, if built on
-one).
+Note: builds target the build machine's own architecture (arm64 macOS, x64 Windows).
 
 ### SQLite → PostgreSQL swap
 

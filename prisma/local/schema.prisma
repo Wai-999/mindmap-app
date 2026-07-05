@@ -1,0 +1,201 @@
+// Used only to build the bundled local server packaged inside the desktop apps
+// (see electron/main.js and electron:pack:* in package.json) — a fully offline,
+// single-file SQLite database on the user's own machine, no shared account, no
+// hosted server. This is a separate schema from the main prisma/schema.prisma
+// (which stays Postgres, for the hosted Vercel deployment) since Prisma's
+// datasource provider is one fixed value per schema file, not something that can
+// vary per build from a single source.
+generator client {
+  provider      = "prisma-client-js"
+  // "windows" is what the packaged Windows app's bundled server actually runs;
+  // "native" covers building/testing this schema locally on a Mac first.
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth (NextAuth / Auth.js v5 Prisma adapter contract) ----------
+
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String   @unique
+  password  String? // bcrypt hash; null if the user only ever signs in via a future OAuth provider
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+  mindmaps Mindmap[]
+  folders  Folder[]
+  tags     Tag[]
+
+  @@map("users")
+}
+
+// Required by @auth/prisma-adapter's contract. Unused while there is only a
+// Credentials provider, but keeping it means adding Google/GitHub OAuth later
+// needs zero schema migration.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// Not used while session strategy = "jwt", kept for adapter compatibility.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ---------- Core domain ----------
+
+model Mindmap {
+  id    String @id @default(cuid())
+  title String @default("Untitled Mindmap")
+
+  // JSON-encoded MindmapContent ({ nodes, edges, viewport }) — see src/types/mindmap.ts.
+  // Stored as a plain string (not the Prisma `Json` type) so this schema behaves
+  // identically on SQLite and PostgreSQL; encode/decode via src/lib/mindmap/content-codec.ts.
+  content        String   @default("{\"nodes\":[],\"edges\":[]}")
+  contentVersion Int      @default(1)
+  thumbnail      String? // small size-capped base64 PNG data URL for dashboard cards
+
+  ownerId  String
+  folderId String? // null = unfiled, shown at the top level of the dashboard
+
+  createdAt DateTime @default(now())
+  // Set explicitly by application code on every write (not @updatedAt) — this is the
+  // value autosave's optimistic-concurrency check compares against, so it must only
+  // change on real content/title writes, never as a side effect of an unrelated update.
+  updatedAt DateTime @default(now())
+
+  owner       User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  folder      Folder?          @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  shareLinks  ShareLink[]
+  attachments Attachment[]
+  versions    MindmapVersion[]
+  tags        Tag[]
+
+  @@index([ownerId])
+  @@index([folderId])
+  @@map("mindmaps")
+}
+
+// Flat (no nesting) — keeps folder UI and queries simple; a mindmap belongs to at most
+// one folder, or none (unfiled).
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  mindmaps Mindmap[]
+
+  @@index([ownerId])
+  @@map("folders")
+}
+
+model Tag {
+  id      String @id @default(cuid())
+  name    String
+  ownerId String
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  mindmaps Mindmap[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+  @@map("tags")
+}
+
+// Snapshot of a mindmap's content taken on every successful autosave — lets a user
+// browse and restore an earlier version. Pruned to the most recent 50 per mindmap
+// (see lib/mindmap/update-content.ts), mirroring history-store.ts's capped in-memory
+// undo stack — a much smaller cap since these are durable DB rows, not memory, and
+// "restore an hour-old version" doesn't need per-keystroke granularity.
+model MindmapVersion {
+  id        String   @id @default(cuid())
+  mindmapId String
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+
+  mindmap Mindmap @relation(fields: [mindmapId], references: [id], onDelete: Cascade)
+
+  @@index([mindmapId, createdAt])
+  @@map("mindmap_versions")
+}
+
+// Not a Prisma `enum` — SQLite has no native enum type support, so this is a
+// plain string constrained at the application layer (src/types/share.ts).
+// "VIEW" | "EDIT"
+model ShareLink {
+  id         String    @id @default(cuid())
+  token      String    @unique
+  permission String    @default("VIEW")
+  mindmapId  String
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  mindmap Mindmap @relation(fields: [mindmapId], references: [id], onDelete: Cascade)
+
+  @@index([mindmapId])
+  @@map("share_links")
+}
+
+// A file attached to a specific node. `nodeId` is a plain correlated string, not a
+// foreign key — nodes live inside Mindmap.content's JSON blob, not as their own rows —
+// so deleting a node doesn't cascade here automatically; applyMindmapUpdate diffs old
+// vs. new node ids on every content save and cleans up orphaned rows explicitly (see
+// src/lib/mindmap/update-content.ts).
+model Attachment {
+  id        String   @id @default(cuid())
+  mindmapId String
+  nodeId    String
+  name      String
+  url       String
+  size      Int
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  mindmap Mindmap @relation(fields: [mindmapId], references: [id], onDelete: Cascade)
+
+  @@index([mindmapId])
+  @@index([mindmapId, nodeId])
+  @@map("attachments")
+}
