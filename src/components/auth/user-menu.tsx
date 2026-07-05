@@ -19,9 +19,13 @@ interface UserMenuProps {
     name?: string | null;
     email?: string | null;
   };
+  // True only for the local Electron build (see LOCAL_NO_AUTH in src/lib/auth.ts)
+  // — there's no real session there to sign out of, so signOut() would just
+  // bounce straight back to this same auto-logged-in dashboard.
+  hideSignOut?: boolean;
 }
 
-export function UserMenu({ user }: UserMenuProps) {
+export function UserMenu({ user, hideSignOut }: UserMenuProps) {
   const initial = (user.name ?? user.email ?? "?").charAt(0).toUpperCase();
 
   return (
@@ -40,11 +44,15 @@ export function UserMenu({ user }: UserMenuProps) {
             {user.email}
           </span>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })}>
-          <LogOut />
-          Sign out
-        </DropdownMenuItem>
+        {!hideSignOut && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })}>
+              <LogOut />
+              Sign out
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -172,6 +172,10 @@ async function startServer(userDataDir) {
       // unconditionally: the server only ever binds 127.0.0.1, so no external request
       // could spoof the Host header in the first place.
       AUTH_TRUST_HOST: "true",
+      // One person, own machine — see LOCAL_NO_AUTH in src/lib/auth.ts. Auto-logs
+      // into a single local account instead of showing a sign-in screen there's
+      // nothing to actually protect from.
+      LOCAL_NO_AUTH: "true",
       ATTACHMENT_STORAGE_PATH: path.join(userDataDir, "attachments"),
       NODE_ENV: "production",
     },

@@ -24,7 +24,10 @@ export default async function DashboardLayout({
           </Link>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <UserMenu user={{ name: session.user.name, email: session.user.email }} />
+            <UserMenu
+              user={{ name: session.user.name, email: session.user.email }}
+              hideSignOut={process.env.LOCAL_NO_AUTH === "true"}
+            />
           </div>
         </div>
       </header>
