@@ -469,7 +469,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         className="group relative flex items-center gap-2 rounded-lg border-2 bg-card px-3 py-2 shadow-sm transition-shadow hover:shadow-md"
         title={remoteSelectorTitle}
         style={{
-          borderColor: selected ? (color ?? "var(--primary)") : "transparent",
+          borderColor: selected ? (color ?? "var(--primary)") : "var(--border)",
           boxShadow: remoteSelectors[0]
             ? `0 0 0 2px var(--card), 0 0 0 4px ${remoteSelectors[0].color}`
             : undefined,
@@ -690,7 +690,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
       style={{
         // A polygon's outline is drawn by its own SVG below instead — this div stays
         // borderless so no rectangular edge shows through its points.
-        borderColor: isPolygon ? undefined : selected ? (color ?? "var(--primary)") : "transparent",
+        borderColor: isPolygon ? undefined : selected ? (color ?? "var(--primary)") : "var(--border)",
         // Ring sits outside the node's own border (a card-colored gap, then the
         // collaborator's color) so local selection and remote selection never visually
         // collide, even when both are true at once.
