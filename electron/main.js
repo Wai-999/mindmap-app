@@ -9,7 +9,7 @@ const { app, BrowserWindow, dialog } = require("electron");
 const path = require("node:path");
 
 // Update this whenever the hosted deployment's URL changes (e.g. a custom domain).
-const HOSTED_URL = "https://mindmap-app.vercel.app";
+const HOSTED_URL = "https://mindmap-app-ruby.vercel.app";
 
 app.setName("Mindmap");
 

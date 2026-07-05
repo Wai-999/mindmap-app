@@ -8,9 +8,7 @@ generator client {
 }
 
 datasource db {
-  // PRODUCTION SWAP: change to "postgresql" and point DATABASE_URL at a Postgres
-  // instance (Neon/Supabase/Railway/etc). See README for the full swap steps.
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
