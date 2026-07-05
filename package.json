@@ -22,7 +22,7 @@
     "test:e2e": "playwright test",
     "electron:dev": "ELECTRON_START_URL=http://localhost:3000 electron .",
     "electron:build-template-db": "rm -f prisma/local/template.db && DATABASE_URL=\"file:./template.db\" npx prisma migrate deploy --schema=prisma/local/schema.prisma",
-    "electron:prepare": "npx prisma generate --schema=prisma/local/schema.prisma && npm run build && rm -rf .next/standalone/.next/static .next/standalone/public && cp -R .next/static .next/standalone/.next/static && cp -R public .next/standalone/public && rm -f .next/standalone.tar.gz && tar -czf .next/standalone.tar.gz -C .next/standalone . && npx prisma generate",
+    "electron:prepare": "rm -rf release && npx prisma generate --schema=prisma/local/schema.prisma && npm run build && rm -rf .next/standalone/.next/static .next/standalone/public && cp -R .next/static .next/standalone/.next/static && cp -R public .next/standalone/public && rm -f .next/standalone.tar.gz && tar -czf .next/standalone.tar.gz -C .next/standalone . && npx prisma generate",
     "electron:pack": "npm run electron:prepare && npm run electron:build-template-db && electron-builder --mac",
     "electron:pack:win": "npm run electron:prepare && npm run electron:build-template-db && electron-builder --win"
   },
