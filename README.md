@@ -135,6 +135,13 @@ variables.
 The same app also packages into a native Mac app via Electron — a real `.dmg` you install once and
 launch like any other app, no terminal/Docker required to use it day-to-day.
 
+**This is a thin client, not a bundled server.** `electron/main.js` just opens a window pointed at
+`HOSTED_URL` (a constant at the top of that file) — the real app, database, and attachments all
+live on a deployment made via Option C above. That's what makes "log in on another device with the
+same account" work: every device (this desktop app, a browser, another Mac) talks to the same
+server, so update `HOSTED_URL` to your actual deployment's URL before building. There's no local
+server or local database anymore, so nothing needs syncing between devices.
+
 **Building it:**
 
 ```bash
@@ -147,21 +154,9 @@ This produces `release/Mindmap-<version>-arm64.dmg`. Open it, drag Mindmap to Ap
 isn't signed with a paid Apple Developer certificate. Right-click the app → **Open** → **Open**
 again in the dialog (only needed once). After that it opens normally.
 
-**Where your data lives:** `~/Library/Application Support/Mindmap/` — `mindmap.db` (your mindmaps),
-`config.json` (a generated session secret), `attachments/` (uploaded files). The app itself never
-touches anything outside this folder plus its own bundle; nothing is exposed to the network (the
-local server only ever binds `127.0.0.1`).
-
-**Enabling collaboration or real password-reset emails:** edit
-`~/Library/Application Support/Mindmap/config.env` (a commented template is created on first
-launch — same optional keys as `.env.example`: `LIVEBLOCKS_SECRET_KEY`, `SMTP_HOST`, etc.), then
-quit and reopen the app.
-
 **Getting updates:** new versions are published as new `.dmg`s on the
 [GitHub Releases page](https://github.com/Wai-999/mindmap-app/releases) — download the latest and
-drag it over the old one in Applications. Your data isn't touched by an update (it lives outside
-the app bundle); only what's actually released is manual, on purpose, so nothing auto-installs
-without you choosing to.
+drag it over the old one in Applications.
 
 **Cutting a new release** (for maintainers):
 
@@ -173,8 +168,7 @@ gh release create vX.Y.Z release/Mindmap-*.dmg --title "vX.Y.Z" --notes "..."
 ```
 
 Note: `npm run electron:pack` builds for the machine's own architecture (Apple Silicon, if built on
-one). Supporting Intel Macs too would mean adding `"darwin"` to `binaryTargets` in
-`prisma/schema.prisma` and building with `--x64`/`--universal`.
+one).
 
 ### SQLite → PostgreSQL swap
 

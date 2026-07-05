@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { put, get, del } from "@vercel/blob";
 
 export interface StorageAdapter {
   save(key: string, buffer: Buffer): Promise<void>;
@@ -13,11 +14,9 @@ function getStorageRoot(): string {
   return process.env.ATTACHMENT_STORAGE_PATH || path.join(process.cwd(), "storage", "attachments");
 }
 
-// PRODUCTION SWAP: implement StorageAdapter against S3-compatible storage (S3/R2/MinIO)
-// for deployments that need durable storage shared across multiple app instances —
-// this adapter only works for a single-instance deployment with a persistent volume
-// (see the Docker Compose `attachments-data` volume), mirroring the SQLite-vs-Postgres
-// swap documented in the README for the same single-vs-multi-instance reason.
+// Used for local dev, Docker/VPS, and the Electron app's own local server — anywhere
+// with a persistent, single-instance filesystem (see the Docker Compose
+// `attachments-data` volume). Vercel deployments use VercelBlobAdapter below instead.
 class LocalFilesystemAdapter implements StorageAdapter {
   private resolveKeyPath(key: string): string {
     // `key` is always an attachment's own cuid, generated server-side — path.basename
@@ -40,4 +39,32 @@ class LocalFilesystemAdapter implements StorageAdapter {
   }
 }
 
-export const storage: StorageAdapter = new LocalFilesystemAdapter();
+// Vercel's serverless functions have no persistent/shared filesystem — this is the
+// S3-compatible swap the comment above anticipated, using Vercel's own Blob store
+// (works out of the box when the project has one attached; free tier covers a
+// personal-scale app). "private" access: attachments stay gated behind this app's
+// own owner/share-token authorization checks (see the attachment routes), the same
+// as they already are on disk — nothing here is ever handed to a client as a
+// direct, unauthenticated storage URL.
+class VercelBlobAdapter implements StorageAdapter {
+  async save(key: string, buffer: Buffer): Promise<void> {
+    await put(key, buffer, { access: "private", addRandomSuffix: false });
+  }
+
+  async read(key: string): Promise<Buffer> {
+    const result = await get(key, { access: "private" });
+    if (!result || result.statusCode !== 200) throw new Error(`Attachment not found: ${key}`);
+    return Buffer.from(await new Response(result.stream).arrayBuffer());
+  }
+
+  async delete(key: string): Promise<void> {
+    await del(key).catch(() => {});
+  }
+}
+
+// Vercel injects BLOB_READ_WRITE_TOKEN automatically once a Blob store is attached
+// to the project — its presence is what distinguishes "running on Vercel" from
+// local dev/Docker/the Electron app, all of which keep using the local disk.
+export const storage: StorageAdapter = process.env.BLOB_READ_WRITE_TOKEN
+  ? new VercelBlobAdapter()
+  : new LocalFilesystemAdapter();

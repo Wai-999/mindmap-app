@@ -21,9 +21,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "electron:dev": "ELECTRON_START_URL=http://localhost:3000 electron .",
-    "electron:build-template-db": "rm -f prisma/template.db && DATABASE_URL=\"file:./template.db\" npx prisma migrate deploy",
-    "electron:prepare": "npm run build && rm -rf .next/standalone/.next/static .next/standalone/public && cp -R .next/static .next/standalone/.next/static && cp -R public .next/standalone/public && rm -f .next/standalone.tar.gz && tar -czf .next/standalone.tar.gz -C .next/standalone .",
-    "electron:pack": "npm run electron:prepare && npm run electron:build-template-db && electron-builder --mac"
+    "electron:pack": "electron-builder --mac"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -36,6 +34,7 @@
     "@liveblocks/react": "^3.21.0",
     "@liveblocks/zustand": "^3.21.0",
     "@prisma/client": "^6.19.3",
+    "@vercel/blob": "^2.5.0",
     "@xyflow/react": "^12.11.1",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",

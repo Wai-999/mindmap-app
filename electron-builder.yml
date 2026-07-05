@@ -5,21 +5,8 @@ directories:
 files:
   - electron/**/*
   - package.json
-# The standalone Next.js server (server.js + traced node_modules + .next/static +
-# public — the same three-piece layout the Dockerfile assembles for
-# `output: "standalone"`) is shipped as a single tar.gz, not a raw directory.
-# electron-builder's extraResources copying special-cases any "node_modules"
-# directory it finds (it's built for packaging an app's *own* dependencies, with its
-# own pruning/dedup logic against the project's real node_modules) and silently
-# strips the standalone build's self-contained copy as a "duplicate" — confirmed by
-# packaging once and finding `Cannot find module 'next'` at runtime with the
-# directory copied directly. A tar.gz is just an opaque resource file to it; the
-# archive is extracted into userData on first launch instead (see electron/main.js).
-extraResources:
-  - from: .next/standalone.tar.gz
-    to: standalone.tar.gz
-  - from: prisma/template.db
-    to: template.db
+# No extraResources needed anymore — the app is a thin client that just loads the
+# hosted deployment's URL (see electron/main.js), not a bundled Next.js server.
 mac:
   icon: assets/icon.icns
   category: public.app-category.productivity
