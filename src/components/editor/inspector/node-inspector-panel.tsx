@@ -61,18 +61,26 @@ export function NodeInspectorPanel({ endpoint }: NodeInspectorPanelProps) {
   if (!nodeId || !node) return null;
 
   async function handleUpload(file: File) {
-    setUploading(true);
     const formData = new FormData();
     formData.append("nodeId", nodeId!);
     formData.append("file", file);
+    const res = await fetch(`${endpoint}/attachments`, { method: "POST", body: formData });
+    if (res.ok) {
+      const data = (await res.json()) as { attachment: AttachmentRecord };
+      // Same endpoint-scoped rewrite as useFetchAttachments — the server always
+      // returns the owner-authenticated path, which a share-link visitor can't use.
+      addAttachment({ ...data.attachment, url: `${endpoint}/attachments/${data.attachment.id}` });
+    }
+  }
+
+  // Attachments are already a list per node (see the `ul` above), so selecting
+  // several files at once just means calling the single-file upload for each —
+  // concurrently, since they're independent requests against the same node.
+  async function handleUploadMultiple(files: File[]) {
+    if (files.length === 0) return;
+    setUploading(true);
     try {
-      const res = await fetch(`${endpoint}/attachments`, { method: "POST", body: formData });
-      if (res.ok) {
-        const data = (await res.json()) as { attachment: AttachmentRecord };
-        // Same endpoint-scoped rewrite as useFetchAttachments — the server always
-        // returns the owner-authenticated path, which a share-link visitor can't use.
-        addAttachment({ ...data.attachment, url: `${endpoint}/attachments/${data.attachment.id}` });
-      }
+      await Promise.all(files.map((file) => handleUpload(file)));
     } finally {
       setUploading(false);
     }
@@ -224,11 +232,12 @@ export function NodeInspectorPanel({ endpoint }: NodeInspectorPanelProps) {
               {uploading ? "Uploading…" : "Upload file"}
               <input
                 type="file"
+                multiple
                 className="hidden"
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleUpload(file);
+                  const files = Array.from(e.target.files ?? []);
                   e.target.value = "";
+                  if (files.length > 0) void handleUploadMultiple(files);
                 }}
               />
             </label>

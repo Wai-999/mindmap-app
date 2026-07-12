@@ -25,6 +25,7 @@ const SHORTCUTS: Shortcut[] = [
   { keys: ["↑", "↓", "←", "→"], description: "Move selection to the nearest idea in that direction" },
   { keys: ["Tab"], description: "Add a child idea" },
   { keys: ["Enter"], description: "Add a sibling idea" },
+  { keys: ["⇧", "Enter"], description: "New line while editing an idea's text" },
   { keys: ["F2"], description: "Rename the selected idea" },
   { keys: ["Delete"], description: "Delete the selected idea, link, or selection" },
   { keys: ["Esc"], description: "Deselect, or step out of focus mode" },

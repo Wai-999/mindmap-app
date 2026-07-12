@@ -3,7 +3,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { applyNodeChanges, applyEdgeChanges } from "@xyflow/react";
 import type { NodeChange, EdgeChange } from "@xyflow/react";
 
-import type { MindmapNode, MindmapEdge, MindmapNodeData, AttachmentRecord } from "@/types/mindmap";
+import type { MindmapNode, MindmapEdge, MindmapNodeData, NodeSize, AttachmentRecord } from "@/types/mindmap";
 import { generateNodeId, generateEdgeId } from "@/lib/mindmap/id";
 import { getParentId, getSubtreeIds, isHierarchyEdge } from "@/lib/mindmap/tree-utils";
 import { pickChildSide, countChildrenOnSide, type BranchSide } from "@/lib/mindmap/branch-side";
@@ -188,6 +188,13 @@ interface EditorState {
 // node created "at" a point appears centered on it, not hanging off to the lower-right.
 // Exported for the unit tests that assert cursor-relative placement.
 export const ROOT_AT_CURSOR_OFFSET = { x: 60, y: 21 };
+
+// Fallback rendered height per size preset, used only when a reference node hasn't
+// been measured yet (React Flow's ResizeObserver fills in node.measured after first
+// render, which covers every realistic case here — the reference node was already on
+// screen for the user to select it). Roughly matches each preset's real card height
+// plus its own internal padding.
+const DEFAULT_NODE_HEIGHT: Record<NodeSize, number> = { small: 40, medium: 56, large: 88 };
 
 function computeChildPosition(parent: MindmapNode, side: BranchSide, siblingsOnSameSide: number) {
   const horizontalGap = 240;
@@ -501,9 +508,26 @@ export const useEditorStore = create<EditorState>()(
     },
 
     addSiblingNode: (nodeId) => {
-      const parentId = getParentId(get().edges, nodeId);
+      const state = get();
+      const parentId = getParentId(state.edges, nodeId);
       if (!parentId) return get().addRootNode();
-      return get().addChildNode(parentId);
+
+      const reference = state.nodes.find((n) => n.id === nodeId);
+      if (!reference) return get().addChildNode(parentId);
+
+      // Land the new idea directly beneath the node the user actually selected —
+      // same side, same column — instead of wherever addChildNode's own count-based
+      // stacking would append it (which recomputes the root's L/R balance from
+      // scratch and can send the new idea to the OTHER side from the one the user
+      // was just working in). Passing an explicit `at` makes addChildNode infer that
+      // same side itself (at.x vs. the parent's x) and skip its own placement math.
+      // Height-aware gap — not a fixed constant — so a large or manually-resized
+      // reference node doesn't get its new sibling drawn on top of it.
+      const referenceHeight =
+        reference.height ?? reference.measured?.height ?? DEFAULT_NODE_HEIGHT[reference.data.size ?? "medium"];
+      const gap = 24;
+      const at = { x: reference.position.x, y: reference.position.y + referenceHeight + gap };
+      return get().addChildNode(parentId, at);
     },
 
     addRootNode: (at) => {

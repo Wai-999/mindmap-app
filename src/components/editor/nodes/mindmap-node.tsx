@@ -57,6 +57,38 @@ function placeCaretAtClickPoint(el: HTMLElement) {
   }
 }
 
+// Shift+Enter's "new line" — a real <br> element at the caret (replacing any current
+// selection), not a bare "\n" text node. A trailing "\n" text node with nothing after
+// it is ambiguous for browsers to resolve a caret position around (whitespace at the
+// very end of an editable region isn't reliably addressable), so a keystroke typed
+// right after the break lands BEFORE it instead of after — <br> is a real rendered
+// element and doesn't have that boundary quirk, which is why execCommand's own
+// "insertLineBreak" uses one internally. getEditableText (below) walks child nodes to
+// turn each <br> back into "\n" when the edit commits.
+function insertLineBreakAtCaret() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const br = document.createElement("br");
+  range.insertNode(br);
+  range.setStartAfter(br);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+// Plain `.textContent` would silently drop every line break (a <br> contributes
+// nothing to it), collapsing multi-line labels back into one line on commit.
+function getEditableText(el: HTMLElement): string {
+  let text = "";
+  for (const node of Array.from(el.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) text += node.textContent ?? "";
+    else if (node.nodeName === "BR") text += "\n";
+  }
+  return text;
+}
+
 // One invisible ~10px strip per side, together covering the node's whole border.
 // Inline styles (not classes) because they must override React Flow's default handle
 // CSS (6px dot, 50% offset, translate centering) property-for-property.
@@ -272,7 +304,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
   }, [isEditing, id]);
 
   function commitEdit() {
-    const text = editableRef.current?.textContent?.trim() ?? "";
+    const text = (editableRef.current ? getEditableText(editableRef.current) : "").trim();
     updateNodeLabel(id, text);
     setEditingNode(null);
   }
@@ -517,13 +549,17 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             contentEditable
             suppressContentEditableWarning
             className={cn(
-              "leading-snug outline-none",
+              "leading-snug whitespace-pre-wrap outline-none",
               !fontSize && SIZE_TEXT[size],
               hasExplicitSize ? "size-full" : cn("min-w-[4ch]", SIZE_WIDTH[size]),
             )}
             onBlur={commitEdit}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === "Escape") {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (e.shiftKey) insertLineBreakAtCaret();
+                else (e.target as HTMLDivElement).blur();
+              } else if (e.key === "Escape") {
                 e.preventDefault();
                 (e.target as HTMLDivElement).blur();
               }
@@ -535,7 +571,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         ) : (
           <span
             className={cn(
-              "block leading-snug break-words",
+              "block leading-snug break-words whitespace-pre-wrap",
               !fontSize && SIZE_TEXT[size],
               hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
               !label && "text-muted-foreground italic",
@@ -592,13 +628,17 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             contentEditable
             suppressContentEditableWarning
             className={cn(
-              "leading-snug outline-none",
+              "leading-snug whitespace-pre-wrap outline-none",
               !fontSize && SIZE_TEXT[size],
               hasExplicitSize ? "size-full" : cn("min-w-[6ch]", SIZE_WIDTH[size]),
             )}
             onBlur={commitEdit}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === "Escape") {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (e.shiftKey) insertLineBreakAtCaret();
+                else (e.target as HTMLDivElement).blur();
+              } else if (e.key === "Escape") {
                 e.preventDefault();
                 (e.target as HTMLDivElement).blur();
               }
@@ -610,7 +650,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         ) : (
           <span
             className={cn(
-              "block leading-snug break-words",
+              "block leading-snug break-words whitespace-pre-wrap",
               !fontSize && SIZE_TEXT[size],
               hasExplicitSize ? "size-full" : SIZE_WIDTH[size],
               !label && "italic opacity-60",
@@ -776,10 +816,17 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
             ref={editableRef}
             contentEditable
             suppressContentEditableWarning
-            className={cn("min-w-[2ch] flex-1 leading-snug outline-none", isPolygon && "text-center")}
+            className={cn(
+              "min-w-[2ch] flex-1 leading-snug whitespace-pre-wrap outline-none",
+              isPolygon && "text-center",
+            )}
             onBlur={commitEdit}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === "Escape") {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (e.shiftKey) insertLineBreakAtCaret();
+                else (e.target as HTMLDivElement).blur();
+              } else if (e.key === "Escape") {
                 e.preventDefault();
                 (e.target as HTMLDivElement).blur();
               }
@@ -791,7 +838,7 @@ function MindmapNodeImpl({ id }: NodeProps<MindmapNodeType>) {
         ) : (
           <span
             className={cn(
-              "flex-1 leading-snug break-words",
+              "flex-1 leading-snug break-words whitespace-pre-wrap",
               isPolygon && "text-center",
               !label && "text-muted-foreground italic",
             )}

@@ -74,6 +74,54 @@ describe("editor-store forest support", () => {
     expect(state.edges.some((e) => e.source === "root" && e.target === siblingId)).toBe(true);
   });
 
+  it("addSiblingNode keeps the new idea on the SAME side as the node it was called on, even when the root's L/R balance heuristic would pick the other side", () => {
+    // Root has two children already on the right; the generic balance heuristic
+    // (used by Tab/addChildNode) would put a third one on the left to even things
+    // out. addSiblingNode should ignore that and match whichever side the selected
+    // reference node itself is on.
+    const root: MindmapNode = { id: "root", type: "mindmapNode", position: { x: 0, y: 0 }, data: { label: "root" } };
+    const right1: MindmapNode = {
+      id: "right1",
+      type: "mindmapNode",
+      position: { x: 240, y: 0 },
+      data: { label: "right1" },
+    };
+    const right2: MindmapNode = {
+      id: "right2",
+      type: "mindmapNode",
+      position: { x: 240, y: 70 },
+      data: { label: "right2" },
+    };
+    load(
+      [root, right1, right2],
+      [makeEdge("root", "right1"), makeEdge("root", "right2")],
+    );
+
+    const siblingId = useEditorStore.getState().addSiblingNode("right1");
+    const state = useEditorStore.getState();
+    const sibling = state.nodes.find((n) => n.id === siblingId)!;
+
+    expect(sibling.position.x).toBeGreaterThan(root.position.x);
+  });
+
+  it("addSiblingNode places the new idea below the reference node's own rendered height, not a fixed gap", () => {
+    const root: MindmapNode = { id: "root", type: "mindmapNode", position: { x: 0, y: 0 }, data: { label: "root" } };
+    const tall: MindmapNode = {
+      id: "tall",
+      type: "mindmapNode",
+      position: { x: 240, y: 0 },
+      height: 300,
+      data: { label: "tall" },
+    };
+    load([root, tall], [makeEdge("root", "tall")]);
+
+    const siblingId = useEditorStore.getState().addSiblingNode("tall");
+    const state = useEditorStore.getState();
+    const sibling = state.nodes.find((n) => n.id === siblingId)!;
+
+    expect(sibling.position.y).toBe(tall.position.y + 300 + 24);
+  });
+
   it("deleteNodeAndSubtree on the sole root empties the canvas without error", () => {
     expect(() => useEditorStore.getState().deleteNodeAndSubtree("root")).not.toThrow();
 
